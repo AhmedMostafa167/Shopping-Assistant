@@ -10,6 +10,7 @@ class Product(SQLAlchemyBase):
     __tablename__ = "products"
     
     product_id = Column(Integer, primary_key=True, autoincrement=True)
+    source_id = Column(String, nullable=True)
     product_uuid = Column(UUID(as_uuid=True), unique=True, nullable=False, default=uuid.uuid4)
     category_name = Column(String, ForeignKey("categories.category_name"), nullable=False)
     asset_id = Column(Integer, ForeignKey("assets.asset_id"), nullable=False)
@@ -20,7 +21,7 @@ class Product(SQLAlchemyBase):
     store = Column(String, nullable=False)
     average_rating = Column(Float, nullable=False)
     rating_number = Column(Integer, nullable=False)
-    price = Column(Integer, nullable=False)
+    price = Column(Float, nullable=False)
     image = Column(String, nullable=False)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
