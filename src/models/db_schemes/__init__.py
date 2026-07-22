@@ -1,1 +1,1 @@
-from shopping_assistant.schemes import Product, RetreivedProduct, Asset, Project
+from shopping_assistant.schemes import Product, RetreivedProduct, Asset, Category

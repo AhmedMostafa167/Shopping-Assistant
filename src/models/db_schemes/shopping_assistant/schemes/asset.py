@@ -15,11 +15,11 @@ class Asset(SQLAlchemyBase):
     asset_name = Column(String, nullable=False)
     asset_size = Column(String, nullable=False)
     asset_config = Column(JSONB, nullable=True)
+    asset_category_name = Column(Integer, ForeignKey("categories.category_name"), nullable=False)
     
-    asset_project_id = Column(Integer, ForeignKey("projects.project_id"), nullable=False)
-    project = relationship("Project", back_populates="assets")
+    category = relationship("Category", back_populates="assets")
 
     __table_args__ = (
-        Index("ix_asset_project_id", asset_project_id),
+        Index("ix_asset_category_name", asset_category_name),
         Index("ix_asset_type", asset_type)
     )
