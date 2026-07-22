@@ -14,7 +14,7 @@ data_router = APIRouter(
                         )
 
 @data_router.post('/upload/{project_id}')
-async def upload_data(project_id: str,
+async def upload_data(project_id: int,
                       file: UploadFile,
                       app_settings: Settings = Depends(get_settings)):
 
