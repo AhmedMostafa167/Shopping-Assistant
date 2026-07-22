@@ -11,7 +11,7 @@ a minimal implementation on RAG focusing on system design
 - Download & install using this [python.org](Link)
 
 ### install uv for environment management
-
+- I love it cuz it makes my life easier when dealing with dependencies!
 ```bash
 pip install uv
 ```
@@ -43,13 +43,21 @@ Windows PowerShell:
 ```bash
 .venv\Scripts\Activate.ps1
 ```
-
+Linux: 
+```bash
+source .venv/bin/activate
+```
 ### install dependencies
 
 ```bash
 uv pip install .
 ```
+### dependencies for Ubuntu or any other Linux distribution
 
+```bash
+sudo apt update
+sudo apt install libpq-dev gcc python3-dev
+```
 ### setup environment variables
 
 ```bash
