@@ -13,7 +13,9 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str
     POSTGRES_PORT: int
     POSTGRES_MAIN_DATABASE: str
-    
+    EMBEDDING_MODEL_SIZE: int
+    EMBEDDING_MODEL: str
+    VECTOR_DB_BACKEND: str
     class Config:
         env_file = ".env"
         
