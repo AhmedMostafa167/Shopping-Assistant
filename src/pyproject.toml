@@ -8,6 +8,7 @@ dependencies = [
     "aiofiles>=25.1.0",
     "alembic>=1.18.5",
     "asyncpg>=0.31.0",
+    "cohere>=7.0.8",
     "datasets>=5.0.0",
     "fastapi>=0.137.2",
     "nltk>=3.10.0",
