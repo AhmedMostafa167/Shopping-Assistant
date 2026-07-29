@@ -17,7 +17,7 @@ async def startup_span():
         settings.POSTGRES_DB,
     )
     app.db_engine = create_async_engine(app.postgres_conn)
-    app.db_session = sessionmaker(
+    app.db_client = sessionmaker(
         bind=app.db_engine, 
         class_=async_session, 
         expire_on_commit=False)
