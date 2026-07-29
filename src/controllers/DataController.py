@@ -33,9 +33,7 @@ class DataController(BaseController):
             random_string = self.generate_random_string()
             new_file_path = os.path.join(
                 project_path,
-                random_string, 
-                '_',
-                cleaned_filename
+                random_string+'_'+cleaned_filename
                 )
             
         return new_file_path

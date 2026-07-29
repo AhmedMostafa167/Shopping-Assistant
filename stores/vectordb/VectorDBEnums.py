@@ -6,7 +6,7 @@ class VectorDBEnums(Enum):
 
 class PGVectoDistanceMethodEnums(Enum):
     COSINE = "vector_cosine_ops"
-    DOT = "vector_l2_ops"
+    DOT = "vector_ip_ops"
     
 
 class PGVectorTableSchemaEnums(Enum):

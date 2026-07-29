@@ -27,8 +27,8 @@ class Product(SQLAlchemyBase):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     
-    category = relationship("Category", "categories")
-    asset = relationship("Asset", "products")
+    category = relationship("Category", back_populates="product")
+    asset = relationship("Asset", back_populates="product")
     
     __table_args__ = (
         Index("ix_product_category_name", category_name),

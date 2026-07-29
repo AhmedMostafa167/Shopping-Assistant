@@ -1,5 +1,5 @@
 from .BaseDataModel  import BaseDataModel
-from db_schemes import Product
+from .db_schemes import Product
 from sqlalchemy.future import select
 from sqlalchemy import func, delete
 
@@ -23,7 +23,7 @@ class ProductModel(BaseDataModel):
     async def get_product(self, product_id: int):
         async with self.db_client() as session:
             query = select(Product).where(Product.product_id == product_id)
-            result = await session.execute(query).scalar_one_or_none()
+            result = await session.execute(query)
             product = result.scalar_one_or_none()
         return product    
 
@@ -32,7 +32,6 @@ class ProductModel(BaseDataModel):
             async with session.begin():
                 for i in range(0, len(products), batch_size):
                     session.add_all(products[i:i+batch_size])
-                    await session.commit()
                     
         return len(products)
     

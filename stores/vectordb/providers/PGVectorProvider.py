@@ -13,9 +13,9 @@ class PGVectorProvider(VectorDBInterface):
         self.defualt_vector_size = defualt_vector_size
         self.distance_method = distance_method
         self.pgvector_table_prefix = PGVectorTableSchemaEnums._PREFIX.value
-        self.logger = logging.getlogger("uvicorn")
+        self.logger = logging.getLogger("uvicorn")
         self.default_index_name = lambda table_name, index_type="vector": f"{table_name}_{index_type}_idx"
-        self.index_threshold = index_threshold
+        self.index_threshold = index_threshold  
         
         
     async def connect(self):
@@ -47,15 +47,15 @@ class PGVectorProvider(VectorDBInterface):
     async def get_table_info(self, table_name: str) -> dict:
         info = {}
         async with self.db_client() as session:
-            tbl_info_query = sql_text('''
+            tbl_info_query = sql_text(f'''
                              SELECT tablename, schemaname, tableowner, tablespace, hasindexes
                              FROM pg_tables
-                             WHERE tablename = :table_name
+                             WHERE tablename = {table_name}
                              ''')
-            num_records_query = sql_text("SELECT COUNT(*) FROM :table_name")
+            num_records_query = sql_text(f"SELECT COUNT(*) FROM {table_name}")
 
-            records = await session.execute(num_records_query, {"table_name": table_name})
-            num_records = await session.execute(tbl_info_query, {"table_name": table_name})
+            records = await session.execute(tbl_info_query, {"table_name": table_name})
+            num_records = await session.execute(num_records_query, {"table_name": table_name})
             info = records.fetchone()
             
             if info is None:
@@ -91,9 +91,9 @@ class PGVectorProvider(VectorDBInterface):
                         f"{PGVectorTableSchemaEnums.ID.value} bigserial PRIMARY KEY,"
                         f'{PGVectorTableSchemaEnums.TEXT.value} text, '
                         f"{PGVectorTableSchemaEnums.VECTOR.value} vector({embedding_size}),"
-                        f"{PGVectorTableSchemaEnums.METADATA.value} metadata jsonb DEFAULT \'{{}}\' "
+                        f"{PGVectorTableSchemaEnums.METADATA.value} jsonb DEFAULT \'{{}}\',"
                         F"{PGVectorTableSchemaEnums.PRODUCT_ID.value} integer "
-                        f"FORIGIN KEY {PGVectorTableSchemaEnums.PRODUCT_ID.value} REFERENCES products(product_id)"
+                        f"FOREIGN KEY ({PGVectorTableSchemaEnums.PRODUCT_ID.value}) REFERENCES products(product_id)"
                         ")"
                         ))
                     await session.commit()
@@ -113,12 +113,13 @@ class PGVectorProvider(VectorDBInterface):
         async with self.db_client() as session:
             async with session.begin():
                 self.logger.info(f"Inserting record {record_id} into table {table_name}")
+                metadata_json = json.dumps(metadata, ensure_ascii=False) if metadata is not None else "{}"
                 await session.execute(sql_text(
-                    f"INSERT INTO {table_name} {PGVectorTableSchemaEnums.TEXT.value},{PGVectorTableSchemaEnums.VECTOR.value}, {PGVectorTableSchemaEnums.METADATA.value}, {PGVectorTableSchemaEnums.PRODUCT_ID.value}) VALUES (:text , :vector, :metadata, :product_id)"
+                    f"INSERT INTO {table_name} ({PGVectorTableSchemaEnums.TEXT.value},{PGVectorTableSchemaEnums.VECTOR.value}, {PGVectorTableSchemaEnums.METADATA.value}, {PGVectorTableSchemaEnums.PRODUCT_ID.value}) VALUES (:text , :vector, :metadata, :product_id)"
                     ), {
                         "text": text,
                         "vector": "[" + ",".join([ str(v) for v in vector ]) + "]",
-                        "metadata": metadata,
+                        "metadata": metadata_json,
                         "product_id": record_id
                     })
                 await session.commit()
@@ -151,26 +152,26 @@ class PGVectorProvider(VectorDBInterface):
                     batch_metadata = metadata[i:i + batch_size]
                     batch_record_ids = record_ids[i:i + batch_size]
         
-                values = []
+                    values = []
 
-                for _text, _vector, _metadata, _record_id in zip(batch_texts, batch_vectors, batch_metadata, batch_record_ids):
+                    for _text, _vector, _metadata, _record_id in zip(batch_texts, batch_vectors, batch_metadata, batch_record_ids):
+                        
+                        metadata_json = json.dumps(_metadata, ensure_ascii=False) if _metadata is not None else "{}"
+                        values.append({
+                            'text': _text,
+                            'vector': "[" + ",".join([ str(v) for v in _vector ]) + "]",
+                            'metadata': metadata_json,
+                            'product_id': _record_id
+                        })
                     
-                    metadata_json = json.dumps(_metadata, ensure_ascii=False) if _metadata is not None else "{}"
-                    values.append({
-                        'text': _text,
-                        'vector': "[" + ",".join([ str(v) for v in _vector ]) + "]",
-                        'metadata': metadata_json,
-                        'product_id': _record_id
-                    })
-                
-                batch_insert_sql = sql_text(f'INSERT INTO {table_name} '
-                                f'({PGVectorTableSchemaEnums.TEXT.value}, '
-                                f'{PGVectorTableSchemaEnums.VECTOR.value}, '
-                                f'{PGVectorTableSchemaEnums.METADATA.value}, '
-                                f'{PGVectorTableSchemaEnums.PRODUCT_ID.value}) '
-                                f'VALUES (:text, :vector, :metadata, :product_id)')
-                
-                await session.execute(batch_insert_sql, values)
+                    batch_insert_sql = sql_text(f'INSERT INTO {table_name} '
+                                    f'({PGVectorTableSchemaEnums.TEXT.value}, '
+                                    f'{PGVectorTableSchemaEnums.VECTOR.value}, '
+                                    f'{PGVectorTableSchemaEnums.METADATA.value}, '
+                                    f'{PGVectorTableSchemaEnums.PRODUCT_ID.value}) '
+                                    f'VALUES (:text, :vector, :metadata, :product_id)')
+                    
+                    await session.execute(batch_insert_sql, values)
         return True
     
     async def search_by_vector(self, table_name: str, vector: list, limit: int, category_name: str) -> List[VectorSearchResult]:
@@ -182,18 +183,18 @@ class PGVectorProvider(VectorDBInterface):
         vector = "[" + ",".join([ str(v) for v in vector ]) + "]"
         async with self.db_client() as session:
             async with session.begin():
-                search_sql = sql_text(f'SELECT  {PGVectorTableSchemaEnums.PRODUCT_ID.value} as product_id, 1 -({PGVectorTableSchemaEnums.VECTOR.value} <=> :vector) as score'
+                search_sql = sql_text(f'SELECT {PGVectorTableSchemaEnums.PRODUCT_ID.value} as product_id, 1 -({PGVectorTableSchemaEnums.VECTOR.value} <=> :vector) as score'
                                         f' FROM {table_name}'
                                         f' JOIN products USING ({PGVectorTableSchemaEnums.PRODUCT_ID.value})'
-                                        f'WHERE products.category_name = :category_name'
-                                        ' ORDER BY score DESC '
-                                        f'LIMIT {limit}')
+                                        f' WHERE products.category_name = :category_name'
+                                        ' ORDER BY score DESC'
+                                        f' LIMIT {limit}')
                 results = await session.execute(search_sql, {
                                                                 "category_name": category_name, 
                                                                 "vector": vector
                                                             }
                                                 )
-                records = results.fetchall()
+                records = results.mappings().fetchall()
                 
                 return [
                     VectorSearchResult(
@@ -218,6 +219,8 @@ class PGVectorProvider(VectorDBInterface):
     async def create_vector_index(self, table_name: str,
                                   index_type: str = PGVectorInexTypeEnums.HNSW.value):
         is_index_existed = await self.is_index_existed(table_name)
+        index_name = self.default_index_name(table_name)
+
         if is_index_existed:
             self.logger.info(f"Index {index_name} already exists")
             return False
@@ -233,7 +236,6 @@ class PGVectorProvider(VectorDBInterface):
                         
                 self.logger.info(f"Creating vector index for collection: {table_name}")
                 
-                index_name = self.default_index_name(table_name)
                 create_index_sql = sql_text(f"CREATE INDEX {index_name} ON {table_name} USING {index_type} ({PGVectorTableSchemaEnums.VECTOR.value});")
                 await session.execute(create_index_sql)
                 self.logger.info(f"Vector Index created on {table_name}")

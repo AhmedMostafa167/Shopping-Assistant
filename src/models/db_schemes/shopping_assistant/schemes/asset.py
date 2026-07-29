@@ -15,7 +15,7 @@ class Asset(SQLAlchemyBase):
     asset_name = Column(String, nullable=False)
     asset_size = Column(String, nullable=False)
     asset_config = Column(JSONB, nullable=True)
-    asset_category_name = Column(Integer, ForeignKey("categories.category_name"), nullable=False)
+    asset_category_name = Column(String, ForeignKey("categories.category_name"), nullable=False)
     
     category = relationship("Category", back_populates="assets")
 
