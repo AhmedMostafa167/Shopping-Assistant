@@ -1,7 +1,7 @@
 from .BaseController import BaseController
-from .ProjectController import ProjectController
+from .CategoryController import CategoryController
 from fastapi import UploadFile
-from models import ResponseEnums   
+from models.enums import ResponseEnums   
 import re 
 import os
 class DataController(BaseController):
@@ -17,22 +17,23 @@ class DataController(BaseController):
             return False, ResponseEnums.FILE_SIZE_EXCEEDED.value
         
         return True, ResponseEnums.FILE_VALIDATION_SUCESS.value
-    def generate_unique_filename(self, orig_filename: str, project_id: str) -> str:
+    def generate_unique_filename(self, orig_filename: str, category_name: str) -> str:
+        
         
         random_string = self.generate_random_string()
-        project_controller = ProjectController()
-        project_path = project_controller.get_project_path(project_id)
+        category_controller = CategoryController()
+        category_path = category_controller.get_category_path(category_name)
         
         cleaned_filename = self.get_clean_filename(orig_filename)
         
         new_file_path = os.path.join(
-            project_path,
+            category_path,
             random_string+'_'+cleaned_filename
             )
         while os.path.exists(new_file_path):
             random_string = self.generate_random_string()
             new_file_path = os.path.join(
-                project_path,
+                category_path,
                 random_string+'_'+cleaned_filename
                 )
             

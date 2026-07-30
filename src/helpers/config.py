@@ -6,7 +6,6 @@ class Settings(BaseSettings):
     APP_VERSION: str
     FILE_ALLOWED_TYPES: list
     FILE_ALLOWED_SIZE: int
-    FILE_DEFUALT_CHUNK_SIZE: int
     POSTGRES_USERNAME: str
     POSTGRES_PASSWORD: str
     POSTGRES_DB: str
@@ -16,6 +15,8 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_SIZE: int
     EMBEDDING_MODEL: str
     VECTOR_DB_BACKEND: str
+    CO_API_KEY: str
+    FILE_DEFAULT_CHUNK_SIZE: int = 512000
     class Config:
         env_file = ".env"
         

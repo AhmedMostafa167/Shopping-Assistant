@@ -2,4 +2,8 @@ from enum import Enum
 
 
 class AssetTypeEnums(Enum):
-    pass
+    CSV = ".csv"
+    EXCEL = ".xlsx"
+    JSON = ".json"
+    PARQUET = ".parquet"
+    ARROW = ".arrow"
