@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Depends, UploadFile, status
+from fastapi import APIRouter, Depends, UploadFile, status, Request
 from fastapi.responses import JSONResponse
 from helpers.config import get_settings, Settings
-from controllers import DataController, PreprocessingController
+from controllers import DataController, PreprocessingController, CategoryController, AssetController
+from models.db_schemes import Asset, Product
+from models import AssetModel, CategoryModel, ProductModel
 from models.enums import ResponseEnums
+from .schemes.Process import ProcessRequest
 import aiofiles
 import logging
+import os
 
 logger = logging.getLogger('uvicorn')
 data_router = APIRouter(
@@ -13,7 +17,8 @@ data_router = APIRouter(
                         )
 
 @data_router.post('/upload/{category_name}')
-async def upload_data(category_name: str,
+async def upload_data(request: Request,
+                      category_name: str,
                       file: UploadFile,
                       app_settings: Settings = Depends(get_settings)):
 
@@ -37,21 +42,118 @@ async def upload_data(category_name: str,
             status_code=status.HTTP_400_BAD_REQUEST, 
             content={"message": ResponseEnums.FILE_UPLOAD_FAILED.value}
             )   
-    logging.info(f"File uploaded!\nValidating Column Names, Data Types, and Values...")
-    preprocessing_controller = PreprocessingController(category_name=category_name)
-    df = preprocessing_controller.load_into_dataframe(file_name=file_path)
-    signal, feedback = preprocessing_controller.validate_products(df)
-    if len(feedback)==0:
-        logging.info(f"Data Validation Success!")
-        return JSONResponse(
-            status_code=status.HTTP_200_OK, 
-            content={"message": ResponseEnums.FILE_UPLOAD_SUCESS.value}
-            )
-    else:
-        logging.info(f"Data Validation Failed!: {feedback}")
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            content={"message": ResponseEnums.FILE_UPLOAD_FAILED.value, "feedback": feedback}
+    category_model = await CategoryModel.create_instance(db_client=request.app.db_client)
+    category_record = await category_model.get_category_or_create_one(category_name=category_name)
+    asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+    asset_record = Asset(
+        asset_type=file.content_type,
+        asset_name=file_path.split('/')[-1],
+        asset_size=os.path.getsize(file_path),
+        asset_category_name=category_name
+        )
+    
+    stored_record = await asset_model.create_asset(asset=asset_record)
+    category_model = await CategoryModel.create_instance(db_client=request.app.db_client)
+    category_record = await category_model.get_category_or_create_one(category_name=category_name)
+    
+    logger.info(f"File upload success: {stored_record}")
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK, 
+        content={
+                "message": ResponseEnums.FILE_UPLOAD_SUCESS.value,
+                "asset_name": stored_record.asset_name,
+                "category_name": category_record.category_name
+                }
             )
     
+@data_router.post('/validate/{asset_name}')
+async def validate_data(request: Request,
+                  asset_name: str,
+                  app_settings: Settings = Depends(get_settings)):
+    
+    
+    asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+    asset_record = await asset_model.get_asset_by_name(asset_name=asset_name)
+    category_name, asset_name = asset_record[0].asset_category_name, asset_record[0].asset_name
+    category_controller = CategoryController()
+    category_path = category_controller.get_category_path(category_name)
+    asset_path = AssetController.get_asset_path(asset_name=asset_name, category_path=category_path)
+    
+    preprocessing_controller = PreprocessingController(category_name=category_name)
+    df = preprocessing_controller.load_into_dataframe(file_name=asset_path)
+    signal, feedback = preprocessing_controller.validate_products(df, file_name=asset_path)
 
+    if feedback:
+        logger.info(f"Data Validation Success! These rows will be deleted: {feedback}")
+        return JSONResponse(
+            status_code=status.HTTP_200_OK, 
+            content={"message": signal+ "These rows will be deleted:", 
+                     "feedback": feedback,
+                     "asset_name": asset_name,
+                    }       
+            )
+    else:
+        logger.info(f"Data Validation Failed!: {feedback}")
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                    "message": signal,                     
+                    "feedback": feedback,
+                    "asset_name": asset_name,
+                    }
+            )
+        
+        
+@data_router.post('/store/{asset_name}')
+async def store_data(request: Request,
+                    asset_name: str,
+                    process_request: ProcessRequest,
+                    app_settings: Settings = Depends(get_settings)
+                  ):
+    
+    asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+    asset_record = await asset_model.get_asset_by_name(asset_name=asset_name)
+    category_name, asset_name = asset_record[0].asset_category_name, asset_record[0].asset_name
+    category_controller = CategoryController()
+    category_path = category_controller.get_category_path(category_name)
+    asset_path = AssetController.get_asset_path(asset_name=asset_name, category_path=category_path)
+    
+    preprocessing_controller = PreprocessingController(category_name=category_name)
+    products_dict = preprocessing_controller.load_into_dataframe(file_name=asset_path).to_dict(orient="records")
+    
+    product_model = await ProductModel.create_instance(db_client=request.app.db_client)
+    
+    products = [
+        Product(
+            source_id=product["parent_asin"],
+            title=product['title'],
+            description=product['description'],
+            store=product['store'],
+            average_rating=product['average_rating'],
+            rating_number=product['rating_number'],
+            price=product['price'],
+            image=product['image'],
+            category_name=category_name,
+            asset_id=asset_record[0].asset_id
+        )
+        for product in products_dict
+    ]
+    try:
+        num_products_inserted = await product_model.insert_many_products(products, batch_size=process_request.batch_size)
+    except Exception as e:
+        logger.error(f"Error inserting products: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            content={"message": ResponseEnums.PRODUCT_INSERTION_FAILED.value}
+            )
+        
+    return JSONResponse(
+            status_code=status.HTTP_200_OK, 
+            content={
+                    "message": ResponseEnums.PRODUCT_INSERTION_SUCCESS.value,
+                    "num_products_inserted": num_products_inserted
+                    }
+            )
+    
+    
