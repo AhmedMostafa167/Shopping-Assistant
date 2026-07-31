@@ -6,6 +6,7 @@ import pandas as pd
 import pyarrow.ipc as ipc
 import os
 import logging
+from typing import Optional
 
 class PreprocessingController(BaseController):
     def __init__(self, category_name: str):
@@ -37,7 +38,7 @@ class PreprocessingController(BaseController):
         df = loader(file_name)
         return df
     
-    def validate_products(self, df: pd.DataFrame):
+    def validate_products(self, df: pd.DataFrame, file_name: str):
         '''
         validate column names, data types, and values
         it should be like this:
@@ -58,23 +59,26 @@ class PreprocessingController(BaseController):
 
         for i, row in enumerate(records):
             try:
-                valid_products.append(Products.model_validate(row))
+                valid_products.append(Product.model_validate(row))
             except ValidationError as e:
                 feedback.append({"row_index": i, "error": str(e)})
-        if len(feedback) > 0:
-            return PreprocessingEnums.DATA_VALIDATION_FAILED.value, feedback
-        else:
+        rows_to_drop = [f["row_index"] for f in feedback]
+        clean_data = df.drop(rows_to_drop)
+        clean_data.to_csv(file_name, index=False)
+        if len(feedback) >= 0 < len(clean_data):
             return PreprocessingEnums.DATA_VALIDATION_SUCCESS.value, feedback
+        else:
+            return PreprocessingEnums.DATA_VALIDATION_FAILED.value, []
         
         
         
-class Products(BaseModel):
-    parent_asin: str
-    title: str = ''
-    description: str = ''
+class Product(BaseModel):
+    parent_asin: str 
+    title: str
+    description: str 
     filename: str
-    store: str = ''
-    average_rating: float = 0
-    rating_number: int = 0
+    store: Optional[str] = None
+    average_rating: Optional[float] = 0.0
+    rating_number: Optional[int] = 0
     price: float = 0.0
-    image: str = ''
+    image: Optional[str] = None
