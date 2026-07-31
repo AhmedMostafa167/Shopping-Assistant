@@ -2,7 +2,7 @@ from .BaseDataModel  import BaseDataModel
 from .db_schemes import Asset
 from sqlalchemy.future import select
 from sqlalchemy import func
-
+import os
 
 class AssetModel(BaseDataModel):
 
@@ -30,7 +30,7 @@ class AssetModel(BaseDataModel):
             result = await session.execute(query)
             asset = result.scalars().all()
         return asset
-
+    
 
     async def get_all_category_assets(self, asset_category_name: str):
 

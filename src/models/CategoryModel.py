@@ -15,17 +15,18 @@ class CategoryModel(BaseDataModel):
     
     async def create_category(self, category: Category):
         async with self.db_client() as session:
-            with session.begin():
+            async with session.begin():
                 session.add(category)
-                await session.refresh(category)
+            await session.refresh(category)
                 
         return category
     
     async def get_category_or_create_one(self, category_name: str):
         async with self.db_client() as session:
-            with session.begin():
+            async with session.begin():
                 query = select(Category).where(Category.category_name == category_name)
-                category = await session.execute(query).scalar_one_or_none()
+                result = await session.execute(query)
+                category = result.scalar_one_or_none()
                 if category is None:
                     category = Category(category_name=category_name)
                     category = await self.create_category(category)
