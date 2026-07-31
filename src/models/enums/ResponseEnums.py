@@ -7,5 +7,7 @@ class ResponseEnums(Enum):
     FILE_SIZE_EXCEEDED = "file_type_exceeded" 
     FILE_UPLOAD_SUCESS = "file_upload_success"
     FILE_UPLOAD_FAILED = "file_upload_failed"
+    PRODUCT_INSERTION_FAILED = "product_insertion_failed"
+    PRODUCT_INSERTION_SUCCESS = "product_insertion_success"
     
     
