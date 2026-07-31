@@ -15,4 +15,4 @@ class Category(SQLAlchemyBase):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     
     products = relationship("Product", back_populates="category")
-    assets = relationship("Asset", back_populates="category")
+    assets = relationship("Asset", back_populates="category")   

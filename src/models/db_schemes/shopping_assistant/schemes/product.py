@@ -17,19 +17,17 @@ class Product(SQLAlchemyBase):
     
     title = Column(String, nullable=False)
     description = Column(String, nullable=False)
-    main_category = Column(String, nullable=False)
-    store = Column(String, nullable=False)
-    average_rating = Column(Float, nullable=False)
-    rating_number = Column(Integer, nullable=False)
-    price = Column(Float, nullable=False)
-    image = Column(String, nullable=False)
+    store = Column(String, nullable=True)
+    average_rating = Column(Float, nullable=True)
+    rating_number = Column(Integer, nullable=True)
+    price = Column(Float, nullable=True)
+    image = Column(String, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     
-    category = relationship("Category", back_populates="product")
-    asset = relationship("Asset", back_populates="product")
-    
+    category = relationship("Category", back_populates="products")
+    asset = relationship("Asset", back_populates="products")     
     __table_args__ = (
         Index("ix_product_category_name", category_name),
         Index("ix_product_asset_id", asset_id)
