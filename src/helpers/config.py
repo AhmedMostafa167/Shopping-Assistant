@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     VECTOR_DB_BACKEND: str
     CO_API_KEY: str
     FILE_DEFAULT_CHUNK_SIZE: int = 512000
+    LLM_BACKEND: str
+    COHERE_API_KEY: str
+    DEFAULT_INPUT_MAX_CHARACTERS: int
+    DEFAULT_GENERATION_MAX_OUTPUT_TOKENS: int
+    DEFAULT_GENERATION_TEMPERATURE: float
+    EMBEDDING_MODEL_SIZE: int
+    
     class Config:
         env_file = ".env"
         
