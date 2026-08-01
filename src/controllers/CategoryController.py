@@ -1,12 +1,11 @@
 from .BaseController import BaseController
-from abc import abstractmethod
 from models.enums import ResponseEnums
 import os
 class CategoryController(BaseController):
     def __init__(self):
         super().__init__()
         
-    @abstractmethod
+    @staticmethod
     def get_category_path(self, category_name: str):
                 
         category_dir = os.path.join(
