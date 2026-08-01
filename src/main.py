@@ -4,7 +4,8 @@ from routes import base, data
 from helpers.config import get_settings
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-
+from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
+from stores.llm.LLMProviderFactory import LLMProviderFactory
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -21,10 +22,17 @@ async def lifespan(app: FastAPI):
         class_=AsyncSession,
         expire_on_commit=False,
     )
-
+    vectordb_provider = VectorDBProviderFactory(config=settings, db_client=app.db_client)
+    app.vectordb_client = vectordb_provider.create(provider=settings.VECTOR_DB_BACKEND)
+    await app.vectordb_client.connect()
+    
+    app.embedding_client = LLMProviderFactory(config=settings)
+    app.embedding_client.set_embedding_model(model_id=settings.EMBEDDING_MODEL, 
+                                             embedding_size=settings.EMBEDDING_MODEL_SIZE)
     yield
 
     await app.db_engine.dispose()
+    await app.vectordb_client.disconnect()
 
 app = FastAPI(lifespan=lifespan)
 
