@@ -38,8 +38,8 @@ class PGVectorProvider(VectorDBInterface):
     async def list_all_tables(self) -> List:
         tables = []
         async with self.db_client() as session:
-            query = sql_text("SELECT tablename FROM pg_tables WHERE tablename like :prefix")
-            results = await session.execute(query, {"prefix": self.pgvector_table_prefix})
+            query = sql_text(f"SELECT tablename FROM pg_tables WHERE tablename like {self.pgvector_table_prefix}")
+            results = await session.execute(query)
             tables = results.scalars().all()
             
         return tables
@@ -54,11 +54,11 @@ class PGVectorProvider(VectorDBInterface):
                              ''')
             num_records_query = sql_text(f"SELECT COUNT(*) FROM {table_name}")
 
-            records = await session.execute(tbl_info_query, {"table_name": table_name})
-            num_records = await session.execute(num_records_query, {"table_name": table_name})
+            records = await session.execute(tbl_info_query)
+            num_records = await session.execute(num_records_query)
             info = records.fetchone()
             
-            if info is None:
+            if not info:
                 return None
             
         
@@ -71,8 +71,8 @@ class PGVectorProvider(VectorDBInterface):
         async with self.db_client() as session:
             async with session.begin():
                 self.logger.info(f"Deleting table {table_name}")
-                await session.execute(sql_text(f"DROP TABLE IF EXISTS {table_name}"))
-                await session.commit()
+                await session.execute(sql_text(f"DROP TABLE IF EXISTS :table_name"), {"table_name": table_name})
+            await session.commit()
                 
             return True
         
@@ -85,7 +85,7 @@ class PGVectorProvider(VectorDBInterface):
         if not await self.is_table_existed(table_name):
             async with self.db_client() as session:
                 async with session.begin():
-                    self.logger.info(f"Creating table {table_name}")
+                    self.logger.info(f"Creating table: {table_name}")
                     await session.execute(sql_text(
                         f"CREATE TABLE {table_name} ("
                         f"{PGVectorTableSchemaEnums.ID.value} bigserial PRIMARY KEY,"
@@ -96,7 +96,7 @@ class PGVectorProvider(VectorDBInterface):
                         f"FOREIGN KEY ({PGVectorTableSchemaEnums.PRODUCT_ID.value}) REFERENCES products(product_id)"
                         ")"
                         ))
-                    await session.commit()
+                await session.commit()
                     
                 return True
             
@@ -104,15 +104,15 @@ class PGVectorProvider(VectorDBInterface):
     async def insert_one(self, table_name: str, 
                      text: str, vector: list,
                      metadata: dict = None, 
-                     record_id: str = None):
+                     product_id: str = None):
         if not await self.is_table_existed(table_name):
             self.logger.info(f"Table {table_name} doesn't exist")
-        if record_id is None:
+        if product_id is None:
             self.logger.info("Can't insert a record without a record id <this is a foriegn key>")
     
         async with self.db_client() as session:
             async with session.begin():
-                self.logger.info(f"Inserting record {record_id} into table {table_name}")
+                self.logger.info(f"Inserting record {product_id} into table {table_name}")
                 metadata_json = json.dumps(metadata, ensure_ascii=False) if metadata is not None else "{}"
                 await session.execute(sql_text(
                     f"INSERT INTO {table_name} ({PGVectorTableSchemaEnums.TEXT.value},{PGVectorTableSchemaEnums.VECTOR.value}, {PGVectorTableSchemaEnums.METADATA.value}, {PGVectorTableSchemaEnums.PRODUCT_ID.value}) VALUES (:text , :vector, :metadata, :product_id)"
@@ -120,7 +120,7 @@ class PGVectorProvider(VectorDBInterface):
                         "text": text,
                         "vector": "[" + ",".join([ str(v) for v in vector ]) + "]",
                         "metadata": metadata_json,
-                        "product_id": record_id
+                        "product_id": product_id
                     })
                 await session.commit()
                 
@@ -190,8 +190,8 @@ class PGVectorProvider(VectorDBInterface):
                                         ' ORDER BY score DESC'
                                         f' LIMIT {limit}')
                 results = await session.execute(search_sql, {
-                                                                "category_name": category_name, 
-                                                                "vector": vector
+                                                             "category_name": category_name, 
+                                                             "vector": vector
                                                             }
                                                 )
                 records = results.mappings().fetchall()

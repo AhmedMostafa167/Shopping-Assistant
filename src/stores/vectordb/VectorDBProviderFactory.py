@@ -12,6 +12,7 @@ class VectorDBProviderFactory:
         
     def create(self, provider: str = VectorDBEnums.PGVECTOR.value):
         
+        
         if provider == VectorDBEnums.PGVECTOR.value:
             return PGVectorProvider(
                 self.db_client,

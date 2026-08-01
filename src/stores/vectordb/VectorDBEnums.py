@@ -4,7 +4,7 @@ class VectorDBEnums(Enum):
     PGVECTOR = "pgvector"
     
 
-class PGVectoDistanceMethodEnums(Enum):
+class PGVectorDistanceMethodEnums(Enum):
     COSINE = "vector_cosine_ops"
     DOT = "vector_ip_ops"
     
