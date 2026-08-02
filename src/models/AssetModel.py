@@ -23,12 +23,12 @@ class AssetModel(BaseDataModel):
             await session.refresh(asset)
         return asset
 
-    async def get_asset_by_name(self, asset_name: str):
+    async def get_asset_by_name(self, asset_name: str) -> Asset:
 
         async with self.db_client() as session:
             query = select(Asset).where(Asset.asset_name == asset_name)
             result = await session.execute(query)
-            asset = result.scalars().all()
+            asset = result.scalar_one_or_none()
         return asset
     
 

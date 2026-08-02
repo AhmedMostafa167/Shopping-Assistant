@@ -1,1 +1,1 @@
-from CoHereProvider import CoHereProvider
+from .CoHereProvider import CoHereProvider

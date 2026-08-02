@@ -16,7 +16,7 @@ class VectorDBProviderFactory:
         if provider == VectorDBEnums.PGVECTOR.value:
             return PGVectorProvider(
                 self.db_client,
-                defualt_vector_size=self.config.EMBEDDING_MODEL_SIZE,
+                default_vector_size=self.config.EMBEDDING_MODEL_SIZE,
                 distance_method=PGVectorInexTypeEnums.HNSW.value,
                 index_threshold=self.config.VECTOR_DB_BACKEND
                 )

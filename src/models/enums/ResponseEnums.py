@@ -9,5 +9,5 @@ class ResponseEnums(Enum):
     FILE_UPLOAD_FAILED = "file_upload_failed"
     PRODUCT_INSERTION_FAILED = "product_insertion_failed"
     PRODUCT_INSERTION_SUCCESS = "product_insertion_success"
-    
+    ASSET_NOT_FOUND = "asset_not_found"
     

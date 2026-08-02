@@ -15,7 +15,6 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_SIZE: int
     EMBEDDING_MODEL: str
     VECTOR_DB_BACKEND: str
-    CO_API_KEY: str
     FILE_DEFAULT_CHUNK_SIZE: int = 512000
     LLM_BACKEND: str
     COHERE_API_KEY: str

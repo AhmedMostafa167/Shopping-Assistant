@@ -5,9 +5,9 @@ class CategoryController(BaseController):
     def __init__(self):
         super().__init__()
         
-    @staticmethod
     def get_category_path(self, category_name: str):
                 
+        
         category_dir = os.path.join(
             self.files_dir,
             category_name.lower()

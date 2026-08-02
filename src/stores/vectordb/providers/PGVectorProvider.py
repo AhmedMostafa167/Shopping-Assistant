@@ -1,5 +1,5 @@
 from ..VectorDBInterface import VectorDBInterface
-from ..VectorDBEnums import VectorDBEnums, PGVectoDistanceMethodEnums, PGVectorTableSchemaEnums, PGVectorInexTypeEnums
+from ..VectorDBEnums import VectorDBEnums, PGVectorDistanceMethodEnums, PGVectorTableSchemaEnums, PGVectorInexTypeEnums
 import logging
 from typing import List
 from ..VectorDBSchemes import VectorSearchResult
@@ -7,10 +7,10 @@ from sqlalchemy.sql import text as sql_text
 import json
 
 class PGVectorProvider(VectorDBInterface):
-    def __init__(self, db_client, defualt_vector_size: int = 786, distance_method: str = None, index_threshold: int = 1000):
+    def __init__(self, db_client, default_vector_size: int = 786, distance_method: str = None, index_threshold: int = 1000):
         
         self.db_client = db_client
-        self.defualt_vector_size = defualt_vector_size
+        self.default_vector_size = default_vector_size
         self.distance_method = distance_method
         self.pgvector_table_prefix = PGVectorTableSchemaEnums._PREFIX.value
         self.logger = logging.getLogger("uvicorn")
@@ -92,7 +92,7 @@ class PGVectorProvider(VectorDBInterface):
                         f'{PGVectorTableSchemaEnums.TEXT.value} text, '
                         f"{PGVectorTableSchemaEnums.VECTOR.value} vector({embedding_size}),"
                         f"{PGVectorTableSchemaEnums.METADATA.value} jsonb DEFAULT \'{{}}\',"
-                        F"{PGVectorTableSchemaEnums.PRODUCT_ID.value} integer "
+                        F"{PGVectorTableSchemaEnums.PRODUCT_ID.value} integer, "
                         f"FOREIGN KEY ({PGVectorTableSchemaEnums.PRODUCT_ID.value}) REFERENCES products(product_id)"
                         ")"
                         ))

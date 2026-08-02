@@ -65,10 +65,13 @@ class PreprocessingController(BaseController):
         rows_to_drop = [f["row_index"] for f in feedback]
         clean_data = df.drop(rows_to_drop)
         clean_data.to_csv(file_name, index=False)
-        if len(feedback) >= 0 < len(clean_data):
+        if len(feedback) > 0 < len(records):
+            return PreprocessingEnums.DATA_VALIDATION_DONE_WITH_ERRORS.value, feedback
+        elif len(feedback) == len(records) :
+            return PreprocessingEnums.DATA_VALIDATION_FAILED.value, feedback
+        elif len(feedback) == 0:
             return PreprocessingEnums.DATA_VALIDATION_SUCCESS.value, feedback
-        else:
-            return PreprocessingEnums.DATA_VALIDATION_FAILED.value, []
+            
         
         
         

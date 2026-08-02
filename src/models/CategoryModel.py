@@ -37,7 +37,7 @@ class CategoryModel(BaseDataModel):
                 
     async def get_all_categories(self, page: int=1, page_size: int=10):
         async with self.db_client() as session:
-            with session.begin():
+            async with session.begin():
                 total_categories = await session.execute(select(func.count(Category.category_name)))
                 total_categories = total_categories.scalar_one()    
                 

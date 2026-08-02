@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, UploadFile, status, Request
 from fastapi.responses import JSONResponse
 from helpers.config import get_settings, Settings
-from controllers import DataController, PreprocessingController, CategoryController, AssetController
+from controllers import DataController, PreprocessingController, CategoryController, AssetController, EmbeddingsController
 from models.db_schemes import Asset, Product
 from models import AssetModel, CategoryModel, ProductModel
-from models.enums import ResponseEnums
+from models.enums import ResponseEnums, PreprocessingEnums
 from .schemes.Process import ProcessRequest
 import aiofiles
 import logging
@@ -53,10 +53,9 @@ async def upload_data(request: Request,
         )
     
     stored_record = await asset_model.create_asset(asset=asset_record)
-    category_model = await CategoryModel.create_instance(db_client=request.app.db_client)
-    category_record = await category_model.get_category_or_create_one(category_name=category_name)
+
     
-    logger.info(f"File upload success: {stored_record}")
+    logger.info(f"File Upload success: {stored_record}")
 
     return JSONResponse(
         status_code=status.HTTP_200_OK, 
@@ -75,7 +74,12 @@ async def validate_data(request: Request,
     
     asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
     asset_record = await asset_model.get_asset_by_name(asset_name=asset_name)
-    category_name, asset_name = asset_record[0].asset_category_name, asset_record[0].asset_name
+    if not asset_record :
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            content={"message": ResponseEnums.ASSET_NOT_FOUND.value}
+        )
+    category_name, asset_name = asset_record.asset_category_name, asset_record.asset_name
     category_controller = CategoryController()
     category_path = category_controller.get_category_path(category_name)
     asset_path = AssetController.get_asset_path(asset_name=asset_name, category_path=category_path)
@@ -84,17 +88,26 @@ async def validate_data(request: Request,
     df = preprocessing_controller.load_into_dataframe(file_name=asset_path)
     signal, feedback = preprocessing_controller.validate_products(df, file_name=asset_path)
 
-    if feedback:
-        logger.info(f"Data Validation Success! These rows will be deleted: {feedback}")
+    if signal == PreprocessingEnums.DATA_VALIDATION_SUCCESS.value:
+        logger.info(f"Data Validation Success!")
         return JSONResponse(
             status_code=status.HTTP_200_OK, 
-            content={"message": signal+ "These rows will be deleted:", 
-                     "feedback": feedback,
+            content={"message": signal, 
                      "asset_name": asset_name,
                     }       
             )
-    else:
-        logger.info(f"Data Validation Failed!: {feedback}")
+    elif signal == PreprocessingEnums.DATA_VALIDATION_DONE_WITH_ERRORS.value:
+        logger.warning(f"Data Validation Done! but some rows aren't valid so will be deleted: {feedback}")
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                    "message": signal,                     
+                    "feedback": feedback,
+                    "asset_name": asset_name,
+                    }
+            )
+    elif signal == PreprocessingEnums.DATA_VALIDATION_FAILED.value:
+        logger.error(f"Data Validation Failed!: {feedback}")
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
@@ -103,7 +116,7 @@ async def validate_data(request: Request,
                     "asset_name": asset_name,
                     }
             )
-        
+
         
 @data_router.post('/store/{asset_name}')
 async def store_data(request: Request,
@@ -114,7 +127,12 @@ async def store_data(request: Request,
     
     asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
     asset_record = await asset_model.get_asset_by_name(asset_name=asset_name)
-    category_name, asset_name = asset_record[0].asset_category_name, asset_record[0].asset_name
+    if not asset_record :
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            content={"message": ResponseEnums.ASSET_NOT_FOUND.value}
+        )
+    category_name, asset_name = asset_record.asset_category_name, asset_record.asset_name
     category_controller = CategoryController()
     category_path = category_controller.get_category_path(category_name)
     asset_path = AssetController.get_asset_path(asset_name=asset_name, category_path=category_path)
@@ -156,4 +174,34 @@ async def store_data(request: Request,
                     }
             )
     
+    
+@data_router.post('/embed/{category_name}')
+async def embed_data(request: Request,
+                  category_name: str,
+                  app_settings: Settings = Depends(get_settings)):
+    
+    product_model = await ProductModel.create_instance(db_client=request.app.db_client)
+    products = await product_model.get_products_by_category(category_name=category_name, 
+                                                            page_no=1, page_size=1300
+                                                            )
+    
+    if len(products) == 0:
+        logger.error("No Products in this category!")
+    
+    embeddings_controller = EmbeddingsController(
+        vectordb_client=request.app.vectordb_client,
+        embedding_client=request.app.embedding_client
+    )
+    
+    status = await embeddings_controller.index_into_vectordb(category_name=category_name, products=products)
+    
+    if status: 
+        logger.info("Vector indexing success!")
+        return JSONResponse(
+            status_code=status.HTTP_200_OK, 
+            content={
+                    "message": ResponseEnums.PRODUCT_INSERTION_SUCCESS.value,
+                    "num_products_inserted": len(products)
+                    }
+            )
     
