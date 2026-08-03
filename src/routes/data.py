@@ -193,9 +193,9 @@ async def embed_data(request: Request,
         embedding_client=request.app.embedding_client
     )
     
-    status = await embeddings_controller.index_into_vectordb(category_name=category_name, products=products)
+    result = await embeddings_controller.index_into_vectordb(category_name=category_name, products=products)
     
-    if status: 
+    if result: 
         logger.info("Vector indexing success!")
         return JSONResponse(
             status_code=status.HTTP_200_OK, 

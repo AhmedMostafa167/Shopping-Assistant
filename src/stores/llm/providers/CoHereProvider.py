@@ -22,7 +22,7 @@ class CoHereProvider(LLMInterface):
         self.embedding_model_id = None
         self.embedding_size = None
 
-        self.client = cohere.Client(api_key=self.api_key)
+        self.client = cohere.ClientV2(api_key=self.api_key)
 
         self.logger = logging.getLogger(__name__)
         
@@ -30,7 +30,7 @@ class CoHereProvider(LLMInterface):
         self.generation_model_id = model_id
         
     def set_embedding_model(self, model_id, embedding_size):
-        self.embedding_model = model_id
+        self.embedding_model_id = model_id
         self.embedding_size = embedding_size
         
     def generate_text(self, prompt: str, chat_history: list=[], max_output_tokens: int=None,
@@ -67,7 +67,7 @@ class CoHereProvider(LLMInterface):
 
     import time
 
-    def embed_texts(self, texts: list, document_type: str = None, batch_size: int = 96):
+    def embed_texts(self, texts: list, document_type: str = None, batch_size: int = 96, max_retries: int = 5):
         if not self.client:
             self.logger.error("CoHere client was not set")
             return None
@@ -84,21 +84,34 @@ class CoHereProvider(LLMInterface):
 
         for batch_num, i in enumerate(range(0, len(texts), batch_size)):
             batch = texts[i:i + batch_size]
+            attempt=0
+            response = None
+            while attempt <= max_retries:
+                try:
+                    response = self.client.embed(
+                        model=self.embedding_model_id,
+                        texts=batch,
+                        input_type=input_type,
+                        output_dimension=1024,
+                        embedding_types=['float']
+                    )
+                    break
+                except cohere.errors.TooManyRequestsError:
+                    attempt +=1
+                    wait = 60
+                    self.logger.warning(
+                        f"Rate limited on batch {batch_num}, waiting {wait}s (attempt {attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(wait)
+            else:
+                self.logger.error(f"Batch {batch_num} failed after {max_retries} retries due to rate limiting")
+                return None
 
-            response = self.client.embed(
-                model=self.embedding_model_id,
-                texts=batch,
-                input_type=input_type,
-                embedding_types=['float']
-            )
             if not response or not response.embeddings or not response.embeddings.float:
                 self.logger.error("Error while embedding text with CoHere")
                 return None
 
             all_embeddings.extend(response.embeddings.float)
-
-            if (batch_num + 1) % 20 == 0:# 20 batches * 96 = 1920 texts, under the 2000/min limit
-                self.logger.info(f"sleeping for 60 seconds to avoid CoHere rate limit")
-                time.sleep(60)
-
+            self.logger.info(f"embedded {len(all_embeddings)}")
         return all_embeddings
+    

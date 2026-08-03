@@ -92,7 +92,7 @@ class PGVectorProvider(VectorDBInterface):
                         f'{PGVectorTableSchemaEnums.TEXT.value} text, '
                         f"{PGVectorTableSchemaEnums.VECTOR.value} vector({embedding_size}),"
                         f"{PGVectorTableSchemaEnums.METADATA.value} jsonb DEFAULT \'{{}}\',"
-                        F"{PGVectorTableSchemaEnums.PRODUCT_ID.value} integer, "
+                        F"{PGVectorTableSchemaEnums.PRODUCT_ID.value} integer UNIQUE, "
                         f"FOREIGN KEY ({PGVectorTableSchemaEnums.PRODUCT_ID.value}) REFERENCES products(product_id)"
                         ")"
                         ))
