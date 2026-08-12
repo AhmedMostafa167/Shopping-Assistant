@@ -2,4 +2,4 @@ from enum import Enum
 
 
 class DataBaseEnums(Enum):
-    pass
+    DEFAULT_CATEGORY_NAME = "electronics_cellphones"
