@@ -1,7 +1,7 @@
 from .BaseDataModel  import BaseDataModel
 from .db_schemes import Product
 from sqlalchemy.future import select
-from sqlalchemy import func, delete
+from sqlalchemy import func, delete, desc
 
 class ProductModel(BaseDataModel):
     def __init__(self, db_client: object):
@@ -20,12 +20,12 @@ class ProductModel(BaseDataModel):
                 
         return product
     
-    async def get_product(self, product_id: int):
+    async def get_products_by_ids(self, product_ids: list[int]):
         async with self.db_client() as session:
-            query = select(Product).where(Product.product_id == product_id)
+            query = select(Product).where(Product.product_id.in_(product_ids))
             result = await session.execute(query)
-            product = result.scalar_one_or_none()
-        return product    
+            products = result.scalars().all()
+        return products
 
     async def insert_many_products(self, products: list[Product], batch_size: int=100):
         async with self.db_client() as session:
@@ -51,4 +51,21 @@ class ProductModel(BaseDataModel):
             products = result.scalars().all()
             
             return products
-                
+        
+    async def keyword_search(self, query: str, top_k: int = 10):
+        async with self.db_client() as session:
+            ts_query = func.to_tsquery("english", query)
+
+            stmt = (
+                select(
+                    Product.product_id,
+                    func.ts_rank(Product.search_vector, ts_query).label("score")
+                )
+                .where(Product.search_vector.op("@@")(ts_query))
+                .order_by(desc("score"))
+                .limit(top_k)
+            )
+            result = await session.execute(stmt)
+            products = result.all()
+            
+            return products
