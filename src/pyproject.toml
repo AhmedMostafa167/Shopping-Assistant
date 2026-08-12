@@ -11,6 +11,7 @@ dependencies = [
     "cohere>=7.0.8",
     "datasets>=5.0.0",
     "fastapi>=0.137.2",
+    "langgraph>=1.2.10",
     "nltk>=3.10.0",
     "pandas>=3.0.3",
     "pgvector>=0.5.0",
