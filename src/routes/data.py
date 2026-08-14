@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, UploadFile, status, Request
 from fastapi.responses import JSONResponse
 from helpers.config import get_settings, Settings
-from controllers import DataController, PreprocessingController, CategoryController, AssetController, EmbeddingsController
+from controllers import DataController, PreprocessingController, CategoryController, AssetController, EmbeddingsController, RetrievalController
 from models.db_schemes import Asset, Product
 from models import AssetModel, CategoryModel, ProductModel
 from models.enums import ResponseEnums, PreprocessingEnums
@@ -205,3 +205,39 @@ async def embed_data(request: Request,
                     }
             )
     
+@data_router.post('/retrieve/{category_name}')
+async def retrieve_products(request: Request,
+                    category_name: str,
+                    query: str,
+                    app_settings: Settings = Depends(get_settings)):
+    
+    retrieval_controller = RetrievalController(embedding_client=request.app.embedding_client,
+                                               vectordb_client=request.app.vectordb_client,
+                                               reranking_client=request.app.reranking_client,
+                                               db_client=request.app.db_client
+                                               )
+    embeddings_controller = EmbeddingsController(
+        vectordb_client=request.app.vectordb_client,
+        embedding_client=request.app.embedding_client
+    )
+    kw_resuilts = await retrieval_controller.keyword_search(query=query, top_k=10)
+    vector_results = await retrieval_controller.vector_search(texts=[query], top_k=10, category_name=category_name)
+    fused_results = retrieval_controller.fuse_results(vector_results, kw_resuilts, k=60)
+    reranked_results = await retrieval_controller.rerank_results(fused_results, query)
+    
+    if len(reranked_results) == 0:
+        return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                content={
+                        "message": ResponseEnums.PRODUCT_RETRIEVAL_FAILED.value,
+                        }
+                )
+    
+    return JSONResponse(
+            status_code=status.HTTP_200_OK, 
+            content={
+                    "message": ResponseEnums.PRODUCT_RETRIEVAL_SUCCESS.value,
+                    "num_products_retrieved": len(reranked_results),
+                    "products": [product.model_dump(allow_nan=True) for product in reranked_results]
+                    }
+            )

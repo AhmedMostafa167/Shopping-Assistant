@@ -18,7 +18,7 @@ class CoHereProvider(LLMInterface):
         self.default_generation_temperature = default_generation_temperature
 
         self.generation_model_id = None
-
+        self.reranking_model_id = None
         self.embedding_model_id = None
         self.embedding_size = None
 
@@ -32,6 +32,9 @@ class CoHereProvider(LLMInterface):
     def set_embedding_model(self, model_id, embedding_size):
         self.embedding_model_id = model_id
         self.embedding_size = embedding_size
+        
+    def set_reranking_model(self, model_id):
+        self.reranking_model_id = model_id
         
     def generate_text(self, prompt: str, chat_history: list=[], max_output_tokens: int=None,
                             temperature: float = None):
@@ -114,4 +117,23 @@ class CoHereProvider(LLMInterface):
             all_embeddings.extend(response.embeddings.float)
             self.logger.info(f"embedded {len(all_embeddings)}")
         return all_embeddings
-    
+    async def rerank(self, retrieved_products: list, query: str):
+        if not self.client:
+            self.logger.error("CoHere client was not set")
+            return None
+        if not self.reranking_model_id:
+            self.logger.error("Reranking model for CoHere was not set")
+            return None
+        
+        response = self.client.rerank(
+            model = self.reranking_model_id,
+            documents = retrieved_products,
+            query = query
+        )
+        
+        if not response or not response.results:
+            self.logger.error("Error while reranking with CoHere")
+            return None
+        ranked_results = sorted(response.results, key=lambda x: x.relevance_score, reverse=True)
+
+        return ranked_results

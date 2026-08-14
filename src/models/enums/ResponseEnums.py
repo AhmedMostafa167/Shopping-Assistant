@@ -10,4 +10,5 @@ class ResponseEnums(Enum):
     PRODUCT_INSERTION_FAILED = "product_insertion_failed"
     PRODUCT_INSERTION_SUCCESS = "product_insertion_success"
     ASSET_NOT_FOUND = "asset_not_found"
-    
+    PRODUCT_RETRIEVAL_FAILED = "product_retrieval_failed"
+    PRODUCT_RETRIEVAL_SUCCESS = "product_retrieval_success"

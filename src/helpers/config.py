@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     DEFAULT_GENERATION_MAX_OUTPUT_TOKENS: int
     DEFAULT_GENERATION_TEMPERATURE: float
     EMBEDDING_MODEL_SIZE: int
+    RERANKING_MODEL: str
     
     class Config:
         env_file = ".env"

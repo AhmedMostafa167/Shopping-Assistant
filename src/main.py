@@ -29,6 +29,8 @@ async def lifespan(app: FastAPI):
     app.embedding_client = llm_factory.create(provider=settings.LLM_BACKEND)
     app.embedding_client.set_embedding_model(model_id=settings.EMBEDDING_MODEL, 
                                              embedding_size=settings.EMBEDDING_MODEL_SIZE)
+    app.reranking_client = llm_factory.create(provider=settings.LLM_BACKEND)
+    app.reranking_client.set_reranking_model(model_id=settings.RERANKING_MODEL)
     yield
 
     await app.db_engine.dispose()

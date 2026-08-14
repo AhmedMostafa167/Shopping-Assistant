@@ -1,5 +1,5 @@
 from .BaseDataModel  import BaseDataModel
-from .db_schemes import Product
+from .db_schemes import Product, RetreivedProduct
 from sqlalchemy.future import select
 from sqlalchemy import func, delete, desc
 
@@ -25,7 +25,7 @@ class ProductModel(BaseDataModel):
             query = select(Product).where(Product.product_id.in_(product_ids))
             result = await session.execute(query)
             products = result.scalars().all()
-        return products
+        return [RetreivedProduct.model_validate(p) for p in products]
 
     async def insert_many_products(self, products: list[Product], batch_size: int=100):
         async with self.db_client() as session:
@@ -54,7 +54,7 @@ class ProductModel(BaseDataModel):
         
     async def keyword_search(self, query: str, top_k: int = 10):
         async with self.db_client() as session:
-            ts_query = func.to_tsquery("english", query)
+            ts_query = func.plainto_tsquery("english", query)
 
             stmt = (
                 select(
@@ -66,6 +66,4 @@ class ProductModel(BaseDataModel):
                 .limit(top_k)
             )
             result = await session.execute(stmt)
-            products = result.all()
-            
-            return products
+            return result.all()

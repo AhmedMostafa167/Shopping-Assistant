@@ -4,3 +4,4 @@ from .BaseController import BaseController
 from .PreprocessingController import PreprocessingController
 from .AssetController import AssetController
 from .EmbeddingsController import EmbeddingsController
+from .RetrievalController import RetrievalController
