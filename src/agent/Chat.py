@@ -8,8 +8,9 @@ Swap to langgraph.checkpoint.postgres.PostgresSaver / langgraph.store.postgres.P
 """
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.store.memory import InMemoryStore
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.store.postgres.aio import AsyncPostgresStore  
+from langgraph.runtime import Runtime  
 
 from .state import AgentState
 from .chat_model import ChatCohereCustom
@@ -49,7 +50,7 @@ def build_graph(llm_provider, retrieval_controller, product_model, memory_contro
     builder.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
     builder.add_edge("tools", "agent")
 
-    checkpointer = InMemorySaver()
-    store = InMemoryStore()
+    checkpointer = PostgresSaver()
+    store = PostgresStore()
 
     return builder.compile(checkpointer=checkpointer, store=store)

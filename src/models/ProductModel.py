@@ -1,5 +1,5 @@
 from .BaseDataModel  import BaseDataModel
-from .db_schemes import Product, RetreivedProduct
+from .db_schemes import Product
 from sqlalchemy.future import select
 from sqlalchemy import func, delete, desc
 
@@ -25,7 +25,7 @@ class ProductModel(BaseDataModel):
             query = select(Product).where(Product.product_id.in_(product_ids))
             result = await session.execute(query)
             products = result.scalars().all()
-        return [RetreivedProduct.model_validate(p) for p in products]
+        return products
 
     async def insert_many_products(self, products: list[Product], batch_size: int=100):
         async with self.db_client() as session:
@@ -52,6 +52,20 @@ class ProductModel(BaseDataModel):
             
             return products
         
+    async def filter_products(self, category_name: str, min_price: float = None, max_price: float = None,
+                               min_rating: float = None, top_k: int = 10):
+        async with self.db_client() as session:
+            query = select(Product).where(Product.category_name == category_name)
+            if min_price is not None:
+                query = query.where(Product.price >= min_price)
+            if max_price is not None:
+                query = query.where(Product.price <= max_price)
+            if min_rating is not None:
+                query = query.where(Product.average_rating >= min_rating)
+            query = query.limit(top_k)
+            result = await session.execute(query)
+            return result.scalars().all()
+
     async def keyword_search(self, query: str, top_k: int = 10):
         async with self.db_client() as session:
             ts_query = func.plainto_tsquery("english", query)
@@ -66,4 +80,6 @@ class ProductModel(BaseDataModel):
                 .limit(top_k)
             )
             result = await session.execute(stmt)
-            return result.all()
+            products = result.all()
+            
+            return products

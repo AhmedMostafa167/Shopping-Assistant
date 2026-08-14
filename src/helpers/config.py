@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     FILE_DEFAULT_CHUNK_SIZE: int = 512000
     LLM_BACKEND: str
     COHERE_API_KEY: str
+    GENERATION_MODEL: str
     DEFAULT_INPUT_MAX_CHARACTERS: int
     DEFAULT_GENERATION_MAX_OUTPUT_TOKENS: int
     DEFAULT_GENERATION_TEMPERATURE: float
@@ -30,4 +31,3 @@ class Settings(BaseSettings):
     
 def get_settings():
     return Settings()
-        

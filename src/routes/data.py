@@ -5,7 +5,7 @@ from controllers import DataController, PreprocessingController, CategoryControl
 from models.db_schemes import Asset, Product
 from models import AssetModel, CategoryModel, ProductModel
 from models.enums import ResponseEnums, PreprocessingEnums
-from .schemes.Process import ProcessRequest
+from .schemas.Process import ProcessRequest
 import aiofiles
 import logging
 import os
