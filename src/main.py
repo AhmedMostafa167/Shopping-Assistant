@@ -9,8 +9,8 @@ from agent.graph import build_graph
 from agent.memory_controller import MemoryController
 from controllers import RetrievalController
 from helpers.config import get_settings
-from models import MemoryModel, ProductModel, ProfileModel
-from routes import base, chat, data
+from models import MemoryModel, ProductModel, ProfileModel,ConversationModel
+from routes import base, chat, data, conversations
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
 
@@ -83,6 +83,10 @@ async def lifespan(app: FastAPI):
     app.memory_model = await MemoryModel.create_instance(
         db_client=app.db_client
     )
+    app.conversation_model = await ConversationModel.create_instance(
+        db_client=app.db_client
+    )
+
 
     app.retrieval_controller = await RetrievalController.create_instance(
         embedding_client=app.embedding_client,
@@ -122,3 +126,4 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(base.base_router)
 app.include_router(data.data_router)
 app.include_router(chat.chat_router)
+app.include_router(conversations.conversation_router)

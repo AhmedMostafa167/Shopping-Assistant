@@ -31,11 +31,10 @@ class CoHereProvider(LLMInterface):
         self.embedding_size = None
 
         self.client = cohere.ClientV2(api_key=self.api_key)
-        # async_client_cls = getattr(cohere, "AsyncClientV2", None)
-        # self.async_client = (
-        #     async_client_cls(api_key=self.api_key) if async_client_cls else None
-        # )
-        self.async_client = cohere.AsyncClient(api_key=self.api_key)
+
+        self.async_client = cohere.AsyncClientV2(
+            api_key=self.api_key
+        )
         self.logger = logging.getLogger(__name__)
 
     def set_generation_model(self, model_id: str):

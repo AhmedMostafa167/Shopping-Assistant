@@ -17,3 +17,9 @@ class Profile(SQLAlchemyBase):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     memories = relationship("Memory", back_populates="profile")
+    
+    conversations = relationship(
+    "Conversation",
+    back_populates="profile",
+    cascade="all, delete-orphan",
+)
