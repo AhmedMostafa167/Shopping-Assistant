@@ -43,18 +43,18 @@ class ConversationModel(BaseDataModel):
             )
             return result.scalar_one_or_none()
 
-async def get_by_uuid_for_profile(
-        self,
-        conversation_uuid: uuid.UUID,
-        profile_id: int,
-    ) -> Conversation | None:
-        # Ownership is checked in the database query itself.
-        async with self.db_client() as session:
-            result = await session.execute(
-                select(Conversation).where(
-                    Conversation.conversation_uuid == conversation_uuid,
-                    Conversation.profile_id == profile_id,
+    async def get_by_uuid_for_profile(
+            self,
+            conversation_uuid: uuid.UUID,
+            profile_id: int,
+        ) -> Conversation | None:
+            # Ownership is checked in the database query itself.
+            async with self.db_client() as session:
+                result = await session.execute(
+                    select(Conversation).where(
+                        Conversation.conversation_uuid == conversation_uuid,
+                        Conversation.profile_id == profile_id,
+                    )
                 )
-            )
 
-            return result.scalar_one_or_none()
+                return result.scalar_one_or_none()
