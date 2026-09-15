@@ -1,6 +1,7 @@
+from sqlalchemy import select
+
 from .BaseDataModel import BaseDataModel
 from .db_schemes import Profile
-from sqlalchemy.future import select
 
 
 class ProfileModel(BaseDataModel):
@@ -9,25 +10,38 @@ class ProfileModel(BaseDataModel):
 
     @classmethod
     async def create_instance(cls, db_client: object):
-        profile = cls(db_client)
-        return profile
+        return cls(db_client)
 
     async def get_profile_or_create_one(self, username: str) -> Profile:
         async with self.db_client() as session:
-            query = select(Profile).where(Profile.username == username)
-            result = await session.execute(query)
+            result = await session.execute(
+                select(Profile).where(Profile.username == username)
+            )
             profile = result.scalar_one_or_none()
+            if profile is not None:
+                return profile
 
-            if profile is None:
-                profile = Profile(username=username)
-                async with session.begin():
-                    session.add(profile)
-                await session.refresh(profile)
+            profile = Profile(username=username)
+            session.add(profile)
+            try:
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                # A concurrent request may have created the same unique user.
+                result = await session.execute(
+                    select(Profile).where(Profile.username == username)
+                )
+                profile = result.scalar_one_or_none()
+                if profile is None:
+                    raise
+                return profile
 
+            await session.refresh(profile)
             return profile
 
     async def get_profile_by_username(self, username: str) -> Profile | None:
         async with self.db_client() as session:
-            query = select(Profile).where(Profile.username == username)
-            result = await session.execute(query)
+            result = await session.execute(
+                select(Profile).where(Profile.username == username)
+            )
             return result.scalar_one_or_none()

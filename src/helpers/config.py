@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_SIZE: int
     RERANKING_MODEL: str
     
-    class Config:
+    class Config(SettingsConfigDict):
         env_file = ".env"
         
     

@@ -1,27 +1,33 @@
-"""
-Builds and compiles the agent graph.
+"""Build and compile the shopping assistant LangGraph."""
 
-Checkpointer/store use in-memory backends for now, deliberately — matching the same
-"defer infra, ship the feature" approach already applied to the Ollama-later decision.
-Swap to langgraph.checkpoint.postgres.PostgresSaver / langgraph.store.postgres.PostgresStore
-(pointed at the same POSTGRES_URI used everywhere else) when state needs to survive a restart.
-"""
-from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.store.memory import InMemoryStore
 
-from .state import AgentState
 from .chat_model import ChatCohereCustom
+from .state import AgentState
 from .tools import (
-    make_search_catalog_tool,
     make_filter_products_tool,
     make_read_memory_tool,
+    make_search_catalog_tool,
     make_write_memory_tool,
 )
 
 
-def build_graph(llm_provider, retrieval_controller, product_model, memory_controller):
+def build_graph(
+    llm_provider,
+    retrieval_controller,
+    product_model,
+    memory_controller,
+    *,
+    checkpointer: BaseCheckpointSaver,
+):
+    """Build the graph using an application-owned checkpointer.
+
+    The checkpointer is deliberately injected instead of constructed here. The
+    FastAPI lifespan owns its async PostgreSQL connection for the lifetime of
+    the application and passes it to this factory.
+    """
     tools = [
         make_search_catalog_tool(retrieval_controller),
         make_filter_products_tool(product_model),
@@ -32,8 +38,8 @@ def build_graph(llm_provider, retrieval_controller, product_model, memory_contro
     chat_model = ChatCohereCustom(llm_provider=llm_provider).bind_tools(tools)
     tool_node = ToolNode(tools)
 
-    def agent_node(state: AgentState):
-        response = chat_model.invoke(state["messages"])
+    async def agent_node(state: AgentState):
+        response = await chat_model.ainvoke(state["messages"])
         return {"messages": [response]}
 
     def should_continue(state: AgentState):
@@ -45,11 +51,13 @@ def build_graph(llm_provider, retrieval_controller, product_model, memory_contro
     builder = StateGraph(AgentState)
     builder.add_node("agent", agent_node)
     builder.add_node("tools", tool_node)
-    builder.set_entry_point("agent")
-    builder.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+    
+    builder.add_edge(START, "agent")
+    builder.add_conditional_edges(
+        "agent",
+        should_continue,
+        {"tools": "tools", END: END},
+    )
     builder.add_edge("tools", "agent")
 
-    checkpointer = InMemorySaver()
-    store = InMemoryStore()
-
-    return builder.compile(checkpointer=checkpointer, store=store)
+    return builder.compile(checkpointer=checkpointer)

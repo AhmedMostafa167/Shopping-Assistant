@@ -5,7 +5,7 @@ from typing import Optional
 class SearchCatalogInput(BaseModel):
     query: str = Field(description="The user's product search intent, in English.")
     category_name: str = Field(description="Category to search within, e.g. 'electronics_cellphones'.")
-    top_k: int = Field(default=10, description="Number of products to return.")
+    top_k: int = Field(default=5, description="Number of products to return.")
 
 
 class FilterProductsInput(BaseModel):

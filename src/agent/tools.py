@@ -5,7 +5,7 @@ from .schemas import SearchCatalogInput, FilterProductsInput, ReadMemoryInput, W
 
 def make_search_catalog_tool(retrieval_controller):
     @tool("search_catalog", args_schema=SearchCatalogInput)
-    async def search_catalog(query: str, category_name: str, top_k: int = 10) -> str:
+    async def search_catalog(query: str, category_name: str, top_k: int = 5) -> str:
         """Search the product catalog semantically and by keyword for products matching the query."""
         products = await retrieval_controller.hybrid_search(query, top_k, category_name)
         if not products:
