@@ -7,6 +7,10 @@ def make_search_catalog_tool(retrieval_controller):
     @tool("search_catalog", args_schema=SearchCatalogInput)
     async def search_catalog(query: str, category_name: str, top_k: int = 5) -> str:
         """Search the product catalog semantically and by keyword for products matching the query."""
+        query = query.strip()
+
+        if not query:
+            return "No valid product search query was provided."
         products = await retrieval_controller.hybrid_search(query, top_k, category_name)
         if not products:
             return "No matching products found."

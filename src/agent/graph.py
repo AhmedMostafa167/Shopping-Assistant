@@ -3,6 +3,8 @@
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
+from langchain_core.messages import SystemMessage
+from .Templates import AGENT_SYSTEM_PROMPT
 
 from .chat_model import ChatCohereCustom
 from .state import AgentState
@@ -39,7 +41,13 @@ def build_graph(
     tool_node = ToolNode(tools)
 
     async def agent_node(state: AgentState):
-        response = await chat_model.ainvoke(state["messages"])
+        messages = [
+            SystemMessage(content=AGENT_SYSTEM_PROMPT),
+            *state["messages"],
+        ]
+
+        response = await chat_model.ainvoke(messages)
+
         return {"messages": [response]}
 
     def should_continue(state: AgentState):

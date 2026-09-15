@@ -28,38 +28,67 @@ class ChatCohereCustom(BaseChatModel):
 
     def _convert_messages(self, messages: List[BaseMessage]) -> list[dict]:
         converted: list[dict] = []
+
         for message in messages:
             if isinstance(message, HumanMessage):
-                converted.append({"role": "user", "content": message.content})
+                converted.append(
+                    {
+                        "role": "user",
+                        "content": message.content,
+                    }
+                )
+
             elif isinstance(message, SystemMessage):
-                converted.append({"role": "system", "content": message.content})
+                converted.append(
+                    {
+                        "role": "system",
+                        "content": message.content,
+                    }
+                )
+
             elif isinstance(message, AIMessage):
                 item = {
                     "role": "assistant",
                     "content": message.content or "",
                 }
+
                 if message.tool_calls:
+                    item.pop("content", None)
+                    item["tool_plan"] = message.content or ""
                     item["tool_calls"] = [
                         {
-                            "id": call["id"],
+                            "id": str(call["id"]),
                             "type": "function",
                             "function": {
                                 "name": call["name"],
-                                "arguments": json.dumps(call.get("args", {})),
+                                "arguments": json.dumps(
+                                    call.get("args", {})
+                                ),
                             },
                         }
                         for call in message.tool_calls
                     ]
+
                 converted.append(item)
+
             elif isinstance(message, ToolMessage):
                 converted.append(
                     {
                         "role": "tool",
-                        "tool_call_id": message.tool_call_id,
-                        "content": str(message.content),
+                        "tool_call_id": str(message.tool_call_id),
+                        "content": [
+                            {
+                                "type": "document",
+                                "document": {
+                                    "data": str(message.content),
+                                },
+                            }
+                        ],
                     }
                 )
+
         return converted
+
 
     @staticmethod
     def _parse_response(response) -> AIMessage:
@@ -73,7 +102,7 @@ class ChatCohereCustom(BaseChatModel):
             if function is None:
                 continue
             arguments = getattr(function, "arguments", None)
-            if isinstance(arguments, str):
+            if isinstance(  arguments, str):
                 arguments = json.loads(arguments) if arguments else {}
             tool_calls.append(
                 {
@@ -93,7 +122,12 @@ class ChatCohereCustom(BaseChatModel):
                 first.get("text", "") if isinstance(first, dict) else ""
             )
 
-        return AIMessage(content=text, tool_calls=tool_calls)
+        tool_plan = getattr(message, "tool_plan", None) or ""
+
+        return AIMessage(
+            content=tool_plan or text,
+            tool_calls=tool_calls,
+        )
 
     def _request_kwargs(self, kwargs: dict) -> dict:
         return {
