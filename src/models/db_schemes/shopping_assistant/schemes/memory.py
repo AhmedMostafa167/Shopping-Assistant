@@ -3,8 +3,7 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, func, ForeignKe
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel
-from typing import Literal, Optional
-from datetime import datetime
+from typing import Literal
 import uuid
 
 
