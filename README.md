@@ -68,7 +68,8 @@ docker compose up -d
 
 # 2. Install dependencies
 cd ../src
-uv pip install .
+pip install uv
+uv sync
 
 # 3. Configure environment
 cp .env.example .env
