@@ -1,1 +1,1 @@
-from .CoHereProvider import CoHereProvider
+from .LangChainCohereProvider import LangChainCohereProvider

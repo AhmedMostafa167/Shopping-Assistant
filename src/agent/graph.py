@@ -2,11 +2,10 @@
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_core.messages import SystemMessage
 from .Templates import AGENT_SYSTEM_PROMPT
 
-from .chat_model import ChatCohereCustom
 from .state import AgentState
 from .tools import (
     make_filter_products_tool,
@@ -37,7 +36,7 @@ def build_graph(
         make_write_memory_tool(memory_controller),
     ]
 
-    chat_model = ChatCohereCustom(llm_provider=llm_provider).bind_tools(tools)
+    chat_model = llm_provider.chat_model.bind_tools(tools)
     tool_node = ToolNode(tools)
 
     async def agent_node(state: AgentState):
@@ -50,22 +49,12 @@ def build_graph(
 
         return {"messages": [response]}
 
-    def should_continue(state: AgentState):
-        last_message = state["messages"][-1]
-        if getattr(last_message, "tool_calls", None):
-            return "tools"
-        return END
-
     builder = StateGraph(AgentState)
     builder.add_node("agent", agent_node)
     builder.add_node("tools", tool_node)
     
     builder.add_edge(START, "agent")
-    builder.add_conditional_edges(
-        "agent",
-        should_continue,
-        {"tools": "tools", END: END},
-    )
+    builder.add_conditional_edges("agent", tools_condition)
     builder.add_edge("tools", "agent")
 
     return builder.compile(checkpointer=checkpointer)
