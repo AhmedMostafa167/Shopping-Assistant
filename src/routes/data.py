@@ -1,16 +1,16 @@
 from fastapi import APIRouter, Depends, UploadFile, status, Request
 from fastapi.responses import JSONResponse
 from helpers.config import get_settings, Settings
+from helpers.logging import get_logger
 from controllers import DataController, PreprocessingController, CategoryController, AssetController, EmbeddingsController, RetrievalController
 from models.db_schemes import Asset, Product
 from models import AssetModel, CategoryModel, ProductModel
-from models.enums import ResponseEnums, PreprocessingEnums
+from models.enums import ResponseEnums, PreprocessingEnums, LogEventEnums, MessageEnums
 from .schemas.Process import ProcessRequest
 import aiofiles
-import logging
 import os
 
-logger = logging.getLogger('uvicorn')
+logger = get_logger(__name__)
 data_router = APIRouter(
     prefix="/api/v1/data",
     tags=["api_v1"]
@@ -37,7 +37,7 @@ async def upload_data(request: Request,
             while chunk:= await file.read(app_settings.FILE_DEFAULT_CHUNK_SIZE):
                 await f.write(chunk)
     except Exception as e:
-        logger.error(f"Error uploading file: {e}")
+        logger.exception(LogEventEnums.FILE_UPLOAD_FAILED.value, error=str(e), filename=file.filename)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST, 
             content={"message": ResponseEnums.FILE_UPLOAD_FAILED.value}
@@ -55,7 +55,11 @@ async def upload_data(request: Request,
     stored_record = await asset_model.create_asset(asset=asset_record)
 
     
-    logger.info(f"File Upload success: {stored_record}")
+    logger.info(
+        LogEventEnums.FILE_UPLOAD_COMPLETED.value,
+        asset_name=stored_record.asset_name,
+        category_name=category_name,
+    )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK, 
@@ -89,7 +93,7 @@ async def validate_data(request: Request,
     signal, feedback = preprocessing_controller.validate_products(df, file_name=asset_path)
 
     if signal == PreprocessingEnums.DATA_VALIDATION_SUCCESS.value:
-        logger.info(f"Data Validation Success!")
+        logger.info(LogEventEnums.DATA_VALIDATION_COMPLETED.value, signal=signal, asset_name=asset_name)
         return JSONResponse(
             status_code=status.HTTP_200_OK, 
             content={"message": signal, 
@@ -97,7 +101,12 @@ async def validate_data(request: Request,
                     }       
             )
     elif signal == PreprocessingEnums.DATA_VALIDATION_DONE_WITH_ERRORS.value:
-        logger.warning(f"Data Validation Done! but some rows aren't valid so will be deleted: {feedback}")
+        logger.warning(
+            LogEventEnums.DATA_VALIDATION_COMPLETED.value,
+            signal=signal,
+            feedback=feedback,
+            asset_name=asset_name,
+        )
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
@@ -107,7 +116,12 @@ async def validate_data(request: Request,
                     }
             )
     elif signal == PreprocessingEnums.DATA_VALIDATION_FAILED.value:
-        logger.error(f"Data Validation Failed!: {feedback}")
+        logger.error(
+            LogEventEnums.DATA_VALIDATION_COMPLETED.value,
+            signal=signal,
+            feedback=feedback,
+            asset_name=asset_name,
+        )
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
@@ -160,7 +174,11 @@ async def store_data(request: Request,
     try:
         num_products_inserted = await product_model.insert_many_products(products, batch_size=process_request.batch_size)
     except Exception as e:
-        logger.error(f"Error inserting products: {e}")
+        logger.exception(
+            LogEventEnums.PRODUCT_INSERTION_FAILED.value,
+            error=str(e),
+            category_name=category_name,
+        )
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST, 
             content={"message": ResponseEnums.PRODUCT_INSERTION_FAILED.value}
@@ -186,7 +204,7 @@ async def embed_data(request: Request,
                                                             )
     
     if len(products) == 0:
-        logger.error("No Products in this category!")
+        logger.warning(MessageEnums.NO_PRODUCTS_FOUND.value, category_name=category_name)
     
     embeddings_controller = EmbeddingsController(
         vectordb_client=request.app.vectordb_client,
@@ -196,7 +214,11 @@ async def embed_data(request: Request,
     result = await embeddings_controller.index_into_vectordb(category_name=category_name, products=products)
     
     if result: 
-        logger.info("Vector indexing success!")
+        logger.info(
+            LogEventEnums.VECTOR_INDEXING_COMPLETED.value,
+            category_name=category_name,
+            product_count=len(products),
+        )
         return JSONResponse(
             status_code=status.HTTP_200_OK, 
             content={

@@ -1,11 +1,11 @@
-import logging
-
 from fastapi import APIRouter, HTTPException, Request, status
 
+from helpers.logging import get_logger
+from models.enums import LogEventEnums, MessageEnums
 from .schemas.Chat import ChatRequest, ChatResponse
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 chat_router = APIRouter(
@@ -16,6 +16,11 @@ chat_router = APIRouter(
 
 @chat_router.post("", response_model=ChatResponse)
 async def chat(request: Request, body: ChatRequest):
+    logger.info(
+        LogEventEnums.CHAT_REQUEST_STARTED.value,
+        conversation_id=str(body.conversation_id),
+        username=body.username,
+    )
     profile = await request.app.profile_model.get_profile_by_username(
         body.username
     )
@@ -23,7 +28,7 @@ async def chat(request: Request, body: ChatRequest):
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User profile not found",
+            detail=MessageEnums.USER_PROFILE_NOT_FOUND.value,
         )
 
     conversation = (
@@ -36,7 +41,7 @@ async def chat(request: Request, body: ChatRequest):
     if conversation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found",
+            detail=MessageEnums.CONVERSATION_NOT_FOUND.value,
         )
 
     config = {
@@ -56,12 +61,20 @@ async def chat(request: Request, body: ChatRequest):
             config=config,
         )
     except Exception:
-        logger.exception(f"Agent execution failed for conversation {conversation.conversation_uuid}")
+        logger.exception(
+            LogEventEnums.AGENT_EXECUTION_FAILED.value,
+            conversation_id=str(conversation.conversation_uuid),
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Agent execution failed",
+            detail=MessageEnums.AGENT_EXECUTION_FAILED.value,
         )
+
+    logger.info(
+        LogEventEnums.CHAT_REQUEST_COMPLETED.value,
+        conversation_id=str(conversation.conversation_uuid),
+    )
 
     return ChatResponse(
         conversation_id=conversation.conversation_uuid,

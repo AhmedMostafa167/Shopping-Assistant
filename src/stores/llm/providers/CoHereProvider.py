@@ -1,11 +1,11 @@
 """Cohere provider with synchronous compatibility and async application paths."""
 
 import asyncio
-import logging
 import time
 
 import cohere
 
+from helpers.logging import get_logger
 from ..LLMEnums import CoHereEnums
 from ..LLMInterface import LLMInterface
 
@@ -35,7 +35,7 @@ class CoHereProvider(LLMInterface):
         self.async_client = cohere.AsyncClientV2(
             api_key=self.api_key
         )
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
     def set_generation_model(self, model_id: str):
         self.generation_model_id = model_id
@@ -117,7 +117,7 @@ class CoHereProvider(LLMInterface):
         temperature: float | None = None,
     ):
         if not self.generation_model_id:
-            self.logger.error("Generation model for Cohere was not set")
+            self.logger.error("llm_generation_model_not_configured")
             return None
 
         response = self.chat(
@@ -132,7 +132,7 @@ class CoHereProvider(LLMInterface):
         )
         text = self._message_text(response)
         if not text:
-            self.logger.error("Error while generating text with Cohere")
+            self.logger.error("llm_text_generation_failed")
         return text
 
     async def agenerate_text(
@@ -154,7 +154,7 @@ class CoHereProvider(LLMInterface):
         )
         text = self._message_text(response)
         if not text:
-            self.logger.error("Error while generating text with Cohere")
+            self.logger.error("llm_text_generation_failed")
         return text
 
     def embed_texts(
@@ -165,7 +165,7 @@ class CoHereProvider(LLMInterface):
         max_retries: int = 5,
     ):
         if not self.embedding_model_id:
-            self.logger.error("Embedding model for Cohere was not set")
+            self.logger.error("llm_embedding_model_not_configured")
             return None
 
         input_type = CoHereEnums.DOCUMENT.value
@@ -189,7 +189,7 @@ class CoHereProvider(LLMInterface):
                 except cohere.errors.TooManyRequestsError:
                     if attempt == max_retries:
                         self.logger.error(
-                            "Embedding batch %s failed after retries", batch_num
+                            "llm_embedding_batch_failed_after_retries", batch_num=batch_num
                         )
                         return None
                     time.sleep(60)
@@ -197,7 +197,7 @@ class CoHereProvider(LLMInterface):
             embeddings = getattr(response, "embeddings", None)
             float_embeddings = getattr(embeddings, "float", None)
             if not float_embeddings:
-                self.logger.error("Error while embedding text with Cohere")
+                self.logger.error("llm_embedding_failed")
                 return None
             all_embeddings.extend(float_embeddings)
         return all_embeddings
@@ -210,7 +210,7 @@ class CoHereProvider(LLMInterface):
         max_retries: int = 5,
     ):
         if not self.embedding_model_id:
-            self.logger.error("Embedding model for Cohere was not set")
+            self.logger.error("llm_embedding_model_not_configured")
             return None
 
         input_type = CoHereEnums.DOCUMENT.value
@@ -237,7 +237,7 @@ class CoHereProvider(LLMInterface):
                 except cohere.errors.TooManyRequestsError:
                     if attempt == max_retries:
                         self.logger.error(
-                            "Embedding batch %s failed after retries", batch_num
+                            "llm_embedding_batch_failed_after_retries", batch_num=batch_num
                         )
                         return None
                     await asyncio.sleep(60)
@@ -245,14 +245,14 @@ class CoHereProvider(LLMInterface):
             embeddings = getattr(response, "embeddings", None)
             float_embeddings = getattr(embeddings, "float", None)
             if not float_embeddings:
-                self.logger.error("Error while embedding text with Cohere")
+                self.logger.error("llm_embedding_failed")
                 return None
             all_embeddings.extend(float_embeddings)
         return all_embeddings
 
     async def rerank(self, retrieved_products: list, query: str):
         if not self.reranking_model_id:
-            self.logger.error("Reranking model for Cohere was not set")
+            self.logger.error("llm_reranking_model_not_configured")
             return None
 
         request = {
@@ -267,6 +267,6 @@ class CoHereProvider(LLMInterface):
 
         results = getattr(response, "results", None)
         if not results:
-            self.logger.error("Error while reranking with Cohere")
+            self.logger.error("llm_reranking_failed")
             return None
         return sorted(results, key=lambda item: item.relevance_score, reverse=True)

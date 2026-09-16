@@ -1,11 +1,11 @@
 from ..VectorDBInterface import VectorDBInterface
 from ..VectorDBEnums import VectorDBEnums, PGVectorDistanceMethodEnums, PGVectorTableSchemaEnums, PGVectorInexTypeEnums
-import logging
 from typing import List
 from ..VectorDBSchemes import VectorSearchResult
 from sqlalchemy.sql import text as sql_text
 import json
 
+from helpers.logging import get_logger
 class PGVectorProvider(VectorDBInterface):
     def __init__(self, db_client, default_vector_size: int = 786, distance_method: str = None, index_threshold: int = 1000):
         
@@ -13,7 +13,7 @@ class PGVectorProvider(VectorDBInterface):
         self.default_vector_size = default_vector_size
         self.distance_method = distance_method
         self.pgvector_table_prefix = PGVectorTableSchemaEnums._PREFIX.value
-        self.logger = logging.getLogger("uvicorn")
+        self.logger = get_logger(__name__)
         self.default_index_name = lambda table_name, index_type="vector": f"{table_name}_{index_type}_idx"
         self.index_threshold = index_threshold  
         
@@ -70,7 +70,7 @@ class PGVectorProvider(VectorDBInterface):
     async def delete_table(self, table_name: str):
         async with self.db_client() as session:
             async with session.begin():
-                self.logger.info(f"Deleting table {table_name}")
+                self.logger.info("vector_table_delete_started", table_name=table_name)
                 await session.execute(sql_text(f"DROP TABLE IF EXISTS :table_name"), {"table_name": table_name})
             await session.commit()
                 
@@ -85,7 +85,7 @@ class PGVectorProvider(VectorDBInterface):
         if not await self.is_table_existed(table_name):
             async with self.db_client() as session:
                 async with session.begin():
-                    self.logger.info(f"Creating table: {table_name}")
+                    self.logger.info("vector_table_creation_started", table_name=table_name)
                     await session.execute(sql_text(
                         f"CREATE TABLE {table_name} ("
                         f"{PGVectorTableSchemaEnums.ID.value} bigserial PRIMARY KEY,"
@@ -106,13 +106,13 @@ class PGVectorProvider(VectorDBInterface):
                      metadata: dict = None, 
                      product_id: str = None):
         if not await self.is_table_existed(table_name):
-            self.logger.info(f"Table {table_name} doesn't exist")
+            self.logger.warning("vector_table_not_found", table_name=table_name)
         if product_id is None:
-            self.logger.info("Can't insert a record without a record id <this is a foriegn key>")
+            self.logger.error("vector_insert_missing_product_id", table_name=table_name)
     
         async with self.db_client() as session:
             async with session.begin():
-                self.logger.info(f"Inserting record {product_id} into table {table_name}")
+                self.logger.info("vector_record_insert_started", table_name=table_name, product_id=product_id)
                 metadata_json = json.dumps(metadata, ensure_ascii=False) if metadata is not None else "{}"
                 await session.execute(sql_text(
                     f"INSERT INTO {table_name} ({PGVectorTableSchemaEnums.TEXT.value},{PGVectorTableSchemaEnums.VECTOR.value}, {PGVectorTableSchemaEnums.METADATA.value}, {PGVectorTableSchemaEnums.PRODUCT_ID.value}) VALUES (:text , :vector, :metadata, :product_id)"
@@ -135,10 +135,10 @@ class PGVectorProvider(VectorDBInterface):
         
         is_table_existed = await self.is_table_existed(table_name)
         if not is_table_existed:
-            self.logger.info(f"Table {table_name} doesn't exist")
+            self.logger.warning("vector_table_not_found", table_name=table_name)
             return False
         if len(vectors) != len(texts):
-            self.logger.info(f"Number of vectors and texts must be equal")
+            self.logger.error("vector_batch_size_mismatch", text_count=len(texts), vector_count=len(vectors))
             return False
         
         if not metadata or len(metadata) == 0:
@@ -177,7 +177,7 @@ class PGVectorProvider(VectorDBInterface):
     async def search_by_vector(self, table_name: str, vector: list, limit: int, category_name: str) -> List[VectorSearchResult]:
         is_table_existed = await self.is_table_existed(table_name)
         if not is_table_existed:
-            self.logger.info(f"Table {table_name} doesn't exist")
+            self.logger.warning("vector_table_not_found", table_name=table_name)
             return []
         
         vector = "[" + ",".join([ str(v) for v in vector ]) + "]"
@@ -222,7 +222,7 @@ class PGVectorProvider(VectorDBInterface):
         index_name = self.default_index_name(table_name)
 
         if is_index_existed:
-            self.logger.info(f"Index {index_name} already exists")
+            self.logger.info("vector_index_already_exists", index_name=index_name)
             return False
         
         async with self.db_client() as session:
@@ -234,11 +234,11 @@ class PGVectorProvider(VectorDBInterface):
                 if records_count < self.index_threshold:
                     return False
                         
-                self.logger.info(f"Creating vector index for collection: {table_name}")
+                self.logger.info("vector_index_creation_started", table_name=table_name)
                 
                 create_index_sql = sql_text(f"CREATE INDEX {index_name} ON {table_name} USING {index_type} ({PGVectorTableSchemaEnums.VECTOR.value});")
                 await session.execute(create_index_sql)
-                self.logger.info(f"Vector Index created on {table_name}")
+                self.logger.info("vector_index_created", table_name=table_name)
                 
                 
     async def reset_vector_index(self, table_name: str, 
@@ -256,15 +256,15 @@ class PGVectorProvider(VectorDBInterface):
         index_name = self.default_index_name(table_name, column_name)
         is_existed = await self.is_index_existed(table_name, index_name)
         if is_existed:
-            self.logger.info(f"Index {index_name} already exists")
+            self.logger.info("vector_index_already_exists", index_name=index_name)
             return False
 
         async with self.db_client() as session:
             async with session.begin():
-                self.logger.info(f"Creating index on {table_name}.{column_name}")
+                self.logger.info("column_index_creation_started", table_name=table_name, column_name=column_name)
                 create_index_sql = sql_text(
                     f"CREATE INDEX {index_name} ON {table_name} ({column_name});"
                 )
                 await session.execute(create_index_sql)
-                self.logger.info(f"Index created on {table_name}.{column_name}")
+                self.logger.info("column_index_created", table_name=table_name, column_name=column_name)
         return True

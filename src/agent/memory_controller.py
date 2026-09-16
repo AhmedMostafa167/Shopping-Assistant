@@ -1,13 +1,13 @@
 """Long-term profile and memory orchestration for the shopping assistant."""
 
 import json
-import logging
-
 from models.db_schemes import ExtractionResult, Memory
+from helpers.logging import get_logger
+from models.enums import LogEventEnums
 
 from .Templates import CONFLICT_PROMPT, EXTRACTION_PROMPT
 
-logger = logging.getLogger("uvicorn")
+logger = get_logger(__name__)
 
 
 class MemoryController:
@@ -21,13 +21,13 @@ class MemoryController:
             prompt=EXTRACTION_PROMPT.format(message=message)
         )
         if not raw:
-            logger.error("Fact extraction returned nothing")
+            logger.error(LogEventEnums.MEMORY_EXTRACTION_FAILED.value, reason="empty_response")
             return []
 
         try:
             parsed = ExtractionResult.model_validate_json(raw)
         except Exception as exc:
-            logger.error("Failed to parse extraction result: %s", exc)
+            logger.exception(LogEventEnums.MEMORY_EXTRACTION_FAILED.value, error=str(exc))
             return []
         return parsed.facts
 
@@ -63,7 +63,10 @@ class MemoryController:
                             -1,
                         )
                     except Exception as exc:
-                        logger.error("Failed to parse conflict check: %s", exc)
+                        logger.exception(
+                            LogEventEnums.MEMORY_CONFLICT_PARSE_FAILED.value,
+                            error=str(exc),
+                        )
 
                 if conflicting_id != -1:
                     updated = await self.memory_model.update_memory(

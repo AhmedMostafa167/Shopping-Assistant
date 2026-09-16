@@ -9,15 +9,21 @@ from agent.graph import build_graph
 from agent.memory_controller import MemoryController
 from controllers import RetrievalController
 from helpers.config import get_settings
+from helpers.logging import configure_logging, get_logger
 from models import MemoryModel, ProductModel, ProfileModel,ConversationModel
+from models.enums import LogEventEnums
 from routes import base, chat, data, conversations
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
+
+configure_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    logger.info(LogEventEnums.APPLICATION_STARTING.value)
 
     username = quote_plus(settings.POSTGRES_USERNAME)
     password = quote_plus(settings.POSTGRES_PASSWORD)
@@ -55,6 +61,10 @@ async def lifespan(app: FastAPI):
         provider=settings.VECTOR_DB_BACKEND
     )
     await app.vectordb_client.connect()
+    logger.info(
+        LogEventEnums.VECTOR_STORE_CONNECTED.value,
+        provider=settings.VECTOR_DB_BACKEND,
+    )
 
     llm_factory = LLMProviderFactory(config=settings)
 
@@ -114,10 +124,12 @@ async def lifespan(app: FastAPI):
             memory_controller=app.memory_controller,
             checkpointer=app.checkpointer,
         )
+        logger.info(LogEventEnums.APPLICATION_STARTED.value)
 
         try:
             yield
         finally:
+            logger.info(LogEventEnums.APPLICATION_STOPPED.value)
             await app.vectordb_client.disconnect()
             await app.db_engine.dispose()
 

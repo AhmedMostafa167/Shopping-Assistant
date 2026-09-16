@@ -1,12 +1,14 @@
 from .BaseController import BaseController
 from .CategoryController import CategoryController
+from helpers.logging import get_logger
 from models.enums import AssetTypeEnums, PreprocessingEnums
 from pydantic import BaseModel, ValidationError
 import pandas as pd
 import pyarrow.ipc as ipc
 import os
-import logging
 from typing import Optional
+
+logger = get_logger(__name__)
 
 class PreprocessingController(BaseController):
     def __init__(self, category_name: str):
@@ -23,7 +25,7 @@ class PreprocessingController(BaseController):
     
     def get_file_loader(self, file_name: str):
         file_type = self.get_file_type(file_name)
-        logging.info(f"File Type: {file_type}")
+        logger.info("file_type_detected", file_name=file_name, file_type=file_type)
         LOADERS = {
         AssetTypeEnums.CSV.value: pd.read_csv,
         AssetTypeEnums.EXCEL.value: pd.read_excel,
