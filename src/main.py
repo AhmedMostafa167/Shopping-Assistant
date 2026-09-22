@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
         f"postgresql+asyncpg://{username}:{password}"
         f"@{host}:{port}/{database}"
     )
-
+    
     app.langgraph_postgres_conn = (
         f"postgresql://{username}:{password}"
         f"@{host}:{port}/{database}"
@@ -45,12 +45,14 @@ async def lifespan(app: FastAPI):
         app.postgres_conn,
         pool_pre_ping=True,
     )
+    logger.info("DB Engine Created")
 
     app.db_client = async_sessionmaker(
         bind=app.db_engine,
         class_=AsyncSession,
         expire_on_commit=False,
     )
+    logger.info("DB client defined")
 
     vectordb_provider = VectorDBProviderFactory(
         config=settings,
@@ -60,6 +62,8 @@ async def lifespan(app: FastAPI):
     app.vectordb_client = vectordb_provider.create(
         provider=settings.VECTOR_DB_BACKEND
     )
+    logger.info("Vector DB client Created")
+
     await app.vectordb_client.connect()
     logger.info(
         LogEventEnums.VECTOR_STORE_CONNECTED.value,
@@ -124,6 +128,8 @@ async def lifespan(app: FastAPI):
             memory_controller=app.memory_controller,
             checkpointer=app.checkpointer,
         )
+        logger.info("Graph Built successfully")
+        
         logger.info(LogEventEnums.APPLICATION_STARTED.value)
 
         try:
