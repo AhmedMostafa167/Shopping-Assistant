@@ -109,7 +109,6 @@ async def lifespan(app: FastAPI):
     )
 
     app.memory_controller = MemoryController(
-        llm_provider=app.llm_client,
         memory_model=app.memory_model,
         profile_model=app.profile_model,
     )

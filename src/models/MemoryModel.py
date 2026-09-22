@@ -25,7 +25,6 @@ class MemoryModel(BaseDataModel):
         fact_type: str | None = None,
         limit: int = 50,
     ) -> list[Memory]:
-        # limit = max(1, min(limit, 100))
         query = (
             select(Memory)
             .where(Memory.profile_id == profile_id)
@@ -46,6 +45,7 @@ class MemoryModel(BaseDataModel):
         confidence: float,
         *,
         profile_id: int,
+        fact_type: str | None = None,
     ) -> Memory | None:
         query = select(Memory).where(
             Memory.memory_id == memory_id,
@@ -60,6 +60,8 @@ class MemoryModel(BaseDataModel):
 
             memory.content = content
             memory.confidence = confidence
+            if fact_type is not None:
+                memory.fact_type = fact_type
             await session.commit()
             await session.refresh(memory)
             return memory
