@@ -15,6 +15,7 @@ from models.enums import LogEventEnums
 from routes import base, chat, data, conversations
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
+from utils.metrics import setup_metrics
 
 configure_logging()
 logger = get_logger(__name__)
@@ -140,6 +141,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+setup_metrics(app)
 app.include_router(base.base_router)
 app.include_router(data.data_router)
 app.include_router(chat.chat_router)
