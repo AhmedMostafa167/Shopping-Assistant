@@ -79,7 +79,7 @@ cp .env.example .env
 alembic upgrade head
 
 # 5. Start the API
-uvicorn main:app --reload
+uvicorn --app-dir src main:app --reload
 ```
 
 ## Project structure
@@ -94,9 +94,3 @@ src/
 │   └── vectordb/    # pgvector provider — table creation, indexing, search
 └── main.py
 ```
-
-## Design notes
-
-- **Ingestion is a script, not an endpoint** for bulk catalog loads — no external caller needs to trigger it. The upload/validate/store *endpoints* exist for adding new products incrementally after the initial load.
-- **Embedding model choice is decoupled from query time via `.env`** — the same model name must be used to embed both the catalog and the query, or vector search silently compares two different embedding spaces.
-- **Category and vector indexes are created idempotently** — safe to re-run after every ingestion batch without duplicate-index errors.
