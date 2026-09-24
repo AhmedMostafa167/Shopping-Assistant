@@ -40,4 +40,5 @@ def upgrade():
 
 def downgrade() -> None:
     """Downgrade schema."""
-    pass
+    op.drop_index("ix_products_search_vector", table_name="products")
+    op.drop_column("products", "search_vector")
