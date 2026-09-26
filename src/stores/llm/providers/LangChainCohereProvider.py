@@ -1,7 +1,10 @@
 """LangChain-native Cohere integrations used by the application."""
 
 import asyncio
+import time
+from threading import Lock
 
+from cohere.errors import TooManyRequestsError
 from langchain_cohere import ChatCohere, CohereEmbeddings, CohereRerank
 
 from helpers.logging import get_logger
@@ -10,6 +13,11 @@ from ..LLMEnums import CoHereEnums
 
 
 class LangChainCohereProvider(LLMInterface):
+    EMBED_MAX_INPUTS_PER_REQUEST = 96
+    EMBED_INPUTS_PER_MINUTE = 2000
+    EMBED_RATE_WINDOW_SECONDS = 60.0
+    EMBED_MAX_RETRIES = 3
+
     def __init__(
         self,
         api_key: str,
@@ -28,6 +36,9 @@ class LangChainCohereProvider(LLMInterface):
         self.chat_model = None
         self.embedding_model = None
         self.rerank_model = None
+        self._embed_window_started_at = time.monotonic()
+        self._embed_inputs_in_window = 0
+        self._embed_rate_lock = Lock()
         self.logger = get_logger(__name__)
 
     def set_generation_model(self, model_id: str):
@@ -120,9 +131,66 @@ class LangChainCohereProvider(LLMInterface):
         if self.embedding_model is None:
             self.logger.error("llm_embedding_model_not_configured")
             return None
-        if document_type == CoHereEnums.QUERY.value:
-            return [self.embedding_model.embed_query(text) for text in texts]
-        return self.embedding_model.embed_documents(texts)
+        if not texts:
+            return []
+
+        input_type = (
+            "search_query"
+            if document_type == CoHereEnums.QUERY.value
+            else "search_document"
+        )
+        request_batch_size = min(max(batch_size, 1), self.EMBED_MAX_INPUTS_PER_REQUEST)
+        return [
+            embedding
+            for start in range(0, len(texts), request_batch_size)
+            for embedding in self._embed_batch(
+                texts[start:start + request_batch_size],
+                input_type,
+            )
+        ]
+
+    def _embed_batch(self, texts: list[str], input_type: str) -> list[list[float]]:
+        """Embed one Cohere-sized batch with simple rate limiting and retries."""
+        for attempt in range(self.EMBED_MAX_RETRIES + 1):
+            self._wait_for_embed_capacity(len(texts))
+            try:
+                return self.embedding_model.embed(texts, input_type=input_type)
+            except TooManyRequestsError as exc:
+                if attempt >= self.EMBED_MAX_RETRIES:
+                    raise
+                wait_seconds = self._retry_wait_seconds(exc)
+                self.logger.warning(
+                    "cohere_embedding_rate_limited",
+                    retry=attempt + 1,
+                    wait_seconds=wait_seconds,
+                    batch_size=len(texts),
+                )
+                time.sleep(wait_seconds)
+        raise RuntimeError("Cohere embedding retry loop exited unexpectedly")
+
+    def _wait_for_embed_capacity(self, input_count: int) -> None:
+        """Keep requests within Cohere's 2,000-inputs-per-minute limit."""
+        while True:
+            with self._embed_rate_lock:
+                now = time.monotonic()
+                elapsed = now - self._embed_window_started_at
+                if elapsed >= self.EMBED_RATE_WINDOW_SECONDS:
+                    self._embed_window_started_at = now
+                    self._embed_inputs_in_window = 0
+                if self._embed_inputs_in_window + input_count <= self.EMBED_INPUTS_PER_MINUTE:
+                    self._embed_inputs_in_window += input_count
+                    return
+                wait_seconds = self.EMBED_RATE_WINDOW_SECONDS - elapsed
+            time.sleep(max(wait_seconds, 0.0))
+
+    @staticmethod
+    def _retry_wait_seconds(exc: TooManyRequestsError) -> float:
+        headers = getattr(exc, "headers", {}) or {}
+        retry_after = headers.get("retry-after") or headers.get("Retry-After")
+        try:
+            return max(float(retry_after), 0.0)
+        except (TypeError, ValueError):
+            return LangChainCohereProvider.EMBED_RATE_WINDOW_SECONDS
 
     async def aembed_texts(
         self,
@@ -134,6 +202,7 @@ class LangChainCohereProvider(LLMInterface):
             self.embed_texts,
             texts,
             document_type,
+            kwargs.get("batch_size", self.EMBED_MAX_INPUTS_PER_REQUEST),
         )
 
     async def rerank(self, retrieved_products: list, query: str):

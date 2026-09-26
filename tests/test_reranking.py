@@ -1,8 +1,11 @@
 import asyncio
 import os
 import sys
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
+
+from cohere.errors import TooManyRequestsError
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
@@ -100,3 +103,44 @@ def test_cohere_rerank_preserves_original_product_objects():
     result = asyncio.run(provider.rerank(products, "wireless headphones"))
 
     assert result == [products[1], products[0]]
+
+
+class FakeEmbeddingModel:
+    def __init__(self, failures=0):
+        self.calls = []
+        self.failures = failures
+
+    def embed(self, texts, *, input_type):
+        self.calls.append((list(texts), input_type))
+        if self.failures:
+            self.failures -= 1
+            raise TooManyRequestsError("rate limited", headers={})
+        return [[float(index)] for index, _ in enumerate(texts)]
+
+
+def test_embedding_requests_are_batched_at_cohere_limit():
+    provider = LangChainCohereProvider(api_key="test")
+    provider.embedding_model = FakeEmbeddingModel()
+    texts = [f"product {index}" for index in range(97)]
+
+    with patch("stores.llm.providers.LangChainCohereProvider.time.sleep"):
+        embeddings = provider.embed_texts(texts, document_type="search_document")
+
+    assert len(embeddings) == 97
+    assert [len(call[0]) for call in provider.embedding_model.calls] == [96, 1]
+    assert all(call[1] == "search_document" for call in provider.embedding_model.calls)
+
+
+def test_embedding_retries_rate_limit_using_default_cohere_window():
+    provider = LangChainCohereProvider(api_key="test")
+    provider.embedding_model = FakeEmbeddingModel(failures=1)
+
+    with patch("stores.llm.providers.LangChainCohereProvider.time.sleep") as sleep:
+        result = provider.embed_texts(["query"], document_type="search_query")
+
+    assert len(result) == 1
+    assert provider.embedding_model.calls == [
+        (["query"], "search_query"),
+        (["query"], "search_query"),
+    ]
+    sleep.assert_called_once_with(60.0)
