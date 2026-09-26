@@ -15,8 +15,8 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
         response = await call_next(request)
         process_time = time.time() - start_time
-        REQUEST_COUNT.labels(method=request.method, endpoint=request.url.path, status=str(response.status_code)).inc()
-        REQUEST_LATENCY.labels(method=request.method, endpoint=request.url.path, status=str(response.status_code)).observe(process_time).observe(process_time)
+        REQUEST_COUNT.labels(method=request.method, path=request.url.path, status=str(response.status_code)).inc()
+        REQUEST_LATENCY.labels(method=request.method, path=request.url.path, status=str(response.status_code)).observe(process_time)
         return response
     
 def setup_metrics(app: FastAPI):
