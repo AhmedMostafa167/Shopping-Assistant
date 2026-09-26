@@ -86,6 +86,9 @@ async def lifespan(app: FastAPI):
     app.llm_client.set_generation_model(
         model_id=settings.GENERATION_MODEL
     )
+    app.llm_client.set_reranking_model(
+        model_id=settings.RERANKING_MODEL
+    )
 
     app.product_model = await ProductModel.create_instance(
         db_client=app.db_client
@@ -107,6 +110,7 @@ async def lifespan(app: FastAPI):
         embedding_client=app.embedding_client,
         vectordb_client=app.vectordb_client,
         db_client=app.db_client,
+        reranking_client=app.llm_client,
     )
 
     app.memory_controller = MemoryController(

@@ -7,17 +7,18 @@ from stores.llm.LLMEnums import DocumentTypeEnum
 
 
 class RetrievalController(BaseController):
-    def __init__(self, embedding_client, vectordb_client, db_client):
+    def __init__(self, embedding_client, vectordb_client, db_client, reranking_client=None):
         super().__init__()
 
         self.embedding_client = embedding_client
         self.vectordb_client = vectordb_client
         self.db_client = db_client
+        self.reranking_client = reranking_client
         self.product_model = None
          
     @classmethod
-    async def create_instance(cls, embedding_client, vectordb_client, db_client):
-        controller = cls(embedding_client, vectordb_client, db_client)
+    async def create_instance(cls, embedding_client, vectordb_client, db_client, reranking_client=None):
+        controller = cls(embedding_client, vectordb_client, db_client, reranking_client)
         controller.product_model = await ProductModel.create_instance(db_client=db_client)
         return controller
 
@@ -48,6 +49,16 @@ class RetrievalController(BaseController):
     def reranking(self, vector_results, keyword_results, k=60):
         return rrf(vector_results, keyword_results, k=k)
 
+    async def rerank_results(self, products, query: str):
+        """Rerank products with Cohere when configured, otherwise preserve order."""
+        if not products or self.reranking_client is None:
+            return products
+        rerank = getattr(self.reranking_client, "rerank", None)
+        if rerank is None:
+            return products
+        reranked = await rerank(products, query)
+        return products if reranked is None else reranked
+
     async def get_products_by_ids(self, product_ids: list[int]):
         return await self.product_model.get_products_by_ids(product_ids)
 
@@ -65,4 +76,5 @@ class RetrievalController(BaseController):
         products = await self.get_products_by_ids(fused_ids)
 
         order = {pid: i for i, pid in enumerate(fused_ids)}
-        return sorted(products, key=lambda p: order.get(p.product_id, len(order)))
+        products = sorted(products, key=lambda p: order.get(p.product_id, len(order)))
+        return await self.rerank_results(products, query)

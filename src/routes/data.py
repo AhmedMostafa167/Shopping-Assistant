@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, UploadFile, status, Request
 from fastapi.responses import JSONResponse
 from helpers.config import get_settings, Settings
 from helpers.logging import get_logger
-from controllers import DataController, PreprocessingController, CategoryController, AssetController, EmbeddingsController, RetrievalController
+from controllers import DataController, PreprocessingController, CategoryController, AssetController, EmbeddingsController
 from models.db_schemes import Asset, Product
 from models import AssetModel, CategoryModel, ProductModel
 from models.enums import ResponseEnums, PreprocessingEnums, LogEventEnums, MessageEnums
@@ -232,20 +232,12 @@ async def retrieve_products(request: Request,
                     category_name: str,
                     query: str,
                     app_settings: Settings = Depends(get_settings)):
-    
-    retrieval_controller = RetrievalController(embedding_client=request.app.embedding_client,
-                                               vectordb_client=request.app.vectordb_client,
-                                               reranking_client=request.app.reranking_client,
-                                               db_client=request.app.db_client
-                                               )
-    embeddings_controller = EmbeddingsController(
-        vectordb_client=request.app.vectordb_client,
-        embedding_client=request.app.embedding_client
+    retrieval_controller = request.app.retrieval_controller
+    reranked_results = await retrieval_controller.hybrid_search(
+        query=query,
+        top_k=10,
+        category_name=category_name,
     )
-    kw_resuilts = await retrieval_controller.keyword_search(query=query, top_k=10)
-    vector_results = await retrieval_controller.vector_search(texts=[query], top_k=10, category_name=category_name)
-    fused_results = retrieval_controller.fuse_results(vector_results, kw_resuilts, k=60)
-    reranked_results = await retrieval_controller.rerank_results(fused_results, query)
     
     if len(reranked_results) == 0:
         return JSONResponse(

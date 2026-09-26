@@ -142,5 +142,34 @@ class LangChainCohereProvider(LLMInterface):
             return None
         from langchain_core.documents import Document
 
-        documents = [Document(page_content=str(product)) for product in retrieved_products]
-        return await self.rerank_model.acompress_documents(documents, query)
+        documents = [
+            Document(
+                page_content=self._product_to_text(product),
+                metadata={"product_index": index},
+            )
+            for index, product in enumerate(retrieved_products)
+        ]
+        reranked_documents = await self.rerank_model.acompress_documents(documents, query)
+        reranked_indexes = [
+            document.metadata["product_index"]
+            for document in reranked_documents
+            if "product_index" in document.metadata
+        ]
+        return [retrieved_products[index] for index in reranked_indexes]
+
+    @staticmethod
+    def _product_to_text(product) -> str:
+        """Build the searchable document sent to Cohere from a product model."""
+        fields = (
+            "title",
+            "description",
+            "store",
+            "category_name",
+            "price",
+            "average_rating",
+        )
+        return "\n".join(
+            f"{field}: {getattr(product, field, '')}"
+            for field in fields
+            if getattr(product, field, None) not in (None, "")
+        )
