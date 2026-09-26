@@ -167,7 +167,7 @@ async def store_data(request: Request,
             price=product['price'],
             image=product['image'],
             category_name=category_name,
-            asset_id=asset_record[0].asset_id
+            asset_id=asset_record.asset_id
         )
         for product in products_dict
     ]
