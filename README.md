@@ -1,5 +1,7 @@
 # Shopping Assistant
 
+[![CI](https://github.com/AhmedMostafa167/Shopping-Assistant/actions/workflows/CI.yml/badge.svg)](https://github.com/AhmedMostafa167/Shopping-Assistant/actions/workflows/CI.yml)
+
 Shopping Assistant is a FastAPI backend for conversational product discovery over an e-commerce catalog. It combines structured product data, PostgreSQL full-text search, Cohere embeddings, pgvector similarity search, reciprocal-rank fusion, and Cohere reranking behind a LangGraph-powered conversational agent.
 
 The application also maintains user profiles, conversations, and durable shopping facts such as preferences, constraints, and purchase history.
