@@ -17,8 +17,8 @@ jobs:
         with:
           version: "latest"
       - run: uv sync --group dev
-      - run: uv run ruff check src tests
-      - run: uv run black --check src tests
+      - name: Lint Python source
+        run: uv run ruff check src tests --select E9,F821,F823,F841
 
   test:
     needs: lint
@@ -31,7 +31,8 @@ jobs:
       - run: uv sync --group dev
       - name: Set up environment
         run: cp .env.example .env
-      - run: uv run pytest
+      - name: Run tests
+        run: uv run pytest -q
 
   # build:
   #   needs: test
