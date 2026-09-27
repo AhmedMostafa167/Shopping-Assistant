@@ -1,6 +1,16 @@
 # Shopping Assistant
 
 [![CI](https://github.com/AhmedMostafa167/Shopping-Assistant/actions/workflows/CI.yml/badge.svg)](https://github.com/AhmedMostafa167/Shopping-Assistant/actions/workflows/CI.yml)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Agent-1C3C3C)](https://langchain-ai.github.io/langgraph/)
+[![Cohere](https://img.shields.io/badge/Cohere-LLM%20%7C%20Embeddings%20%7C%20Reranking-39594D)](https://cohere.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![pgvector](https://img.shields.io/badge/pgvector-Vector%20Search-3B82F6)](https://github.com/pgvector/pgvector)
+[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-ORM-D71F00)](https://www.sqlalchemy.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Pytest](https://img.shields.io/badge/Pytest-Tests-0A9EDC?logo=pytest&logoColor=white)](https://pytest.org/)
+[![uv](https://img.shields.io/badge/uv-Dependencies-DE5FE9)](https://docs.astral.sh/uv/)
 
 Shopping Assistant is a FastAPI backend for conversational product discovery over an e-commerce catalog. It combines structured product data, PostgreSQL full-text search, Cohere embeddings, pgvector similarity search, reciprocal-rank fusion, and Cohere reranking behind a LangGraph-powered conversational agent.
 
