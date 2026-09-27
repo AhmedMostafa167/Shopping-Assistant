@@ -7,6 +7,9 @@ from models.db_schemes import Asset, Product
 from models import AssetModel, CategoryModel, ProductModel
 from models.enums import ResponseEnums, PreprocessingEnums, LogEventEnums, MessageEnums
 from .schemas.Process import ProcessRequest
+from sqlalchemy.inspection import inspect
+from fastapi.encoders import jsonable_encoder
+import math
 import aiofiles
 import os
 
@@ -246,12 +249,25 @@ async def retrieve_products(request: Request,
                         "message": ResponseEnums.PRODUCT_RETRIEVAL_FAILED.value,
                         }
                 )
-    
+
+
+
+    def sqlalchemy_to_dict(model):
+        result = {}
+
+        for column in inspect(model).mapper.column_attrs:
+            value = getattr(model, column.key)
+
+            if isinstance(value, float) and math.isnan(value):
+                value = None
+            result[column.key] = value
+
+        return result
     return JSONResponse(
             status_code=status.HTTP_200_OK, 
             content={
                     "message": ResponseEnums.PRODUCT_RETRIEVAL_SUCCESS.value,
                     "num_products_retrieved": len(reranked_results),
-                    "products": [product.model_dump(allow_nan=True) for product in reranked_results]
+                    "products": jsonable_encoder([sqlalchemy_to_dict(product) for product in reranked_results])
                     }
             )
