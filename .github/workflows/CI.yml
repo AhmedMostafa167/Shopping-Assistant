@@ -32,7 +32,6 @@ jobs:
       - name: Set up environment
         run: cp .env.example .env
       - run: uv run pytest
-      - name: test gate
 
   # build:
   #   needs: test
