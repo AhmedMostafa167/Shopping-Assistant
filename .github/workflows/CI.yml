@@ -9,11 +9,6 @@ on:
       - main
 
 jobs:
-  name: CI
-
-on: [push, pull_request]
-
-jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
