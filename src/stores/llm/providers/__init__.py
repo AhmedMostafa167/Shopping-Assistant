@@ -1,1 +1,2 @@
 from .LangChainCohereProvider import LangChainCohereProvider
+from .LangChainGroqProvider import LangChainGroqProvider
