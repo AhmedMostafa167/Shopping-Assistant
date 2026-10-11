@@ -15,6 +15,8 @@ class MessageEnums(str, Enum):
     NO_PRODUCTS_FOUND = "no_products_found"
     VECTOR_INDEXING_SUCCESS = "vector_indexing_success"
     INVALID_SEARCH_QUERY = "invalid_search_query"
+    FEEDBACK_RECORDED = "feedback_recorded"
+    FEEDBACK_UNAVAILABLE = "feedback_unavailable_tracing_disabled"
 
 
 class LogEventEnums(str, Enum):
@@ -28,11 +30,13 @@ class LogEventEnums(str, Enum):
     CHAT_REQUEST_STARTED = "chat_request_started"
     CHAT_REQUEST_COMPLETED = "chat_request_completed"
     AGENT_EXECUTION_FAILED = "agent_execution_failed"
+    CHAT_FEEDBACK_RECORDED = "chat_feedback_recorded"
     FILE_UPLOAD_FAILED = "file_upload_failed"
     FILE_UPLOAD_COMPLETED = "file_upload_completed"
     DATA_VALIDATION_COMPLETED = "data_validation_completed"
     PRODUCT_INSERTION_FAILED = "product_insertion_failed"
     VECTOR_INDEXING_COMPLETED = "vector_indexing_completed"
+    VECTOR_INDEXING_FAILED = "vector_indexing_failed"
     RETRIEVAL_COMPLETED = "retrieval_completed"
     MEMORY_EXTRACTION_FAILED = "memory_extraction_failed"
     MEMORY_CONFLICT_PARSE_FAILED = "memory_conflict_parse_failed"

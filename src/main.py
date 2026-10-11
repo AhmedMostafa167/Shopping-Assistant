@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from agent.graph import build_graph
 from agent.memory_controller import MemoryController
+from agent.prompts import warm_prompt_cache
 from controllers import RetrievalController
 from helpers.config import get_settings
 from helpers.logging import configure_logging, get_logger
+from helpers.tracing import configure_tracing
 from models import MemoryModel, ProductModel, ProfileModel,ConversationModel
 from models.enums import LogEventEnums
 from routes import base, chat, data, conversations
@@ -25,6 +27,13 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     settings = get_settings()
     logger.info(LogEventEnums.APPLICATION_STARTING.value)
+
+    app.langfuse = configure_tracing(settings)
+    logger.info(
+        "Langfuse tracing configured",
+        enabled=settings.LANGFUSE_TRACING_ENABLED,
+        environment=settings.LANGFUSE_TRACING_ENVIRONMENT,
+    )
 
     username = quote_plus(settings.POSTGRES_USERNAME)
     password = quote_plus(settings.POSTGRES_PASSWORD)
@@ -127,12 +136,23 @@ async def lifespan(app: FastAPI):
 
         app.checkpointer = checkpointer
 
+        # Prompts come from Langfuse whenever it is configured, even with tracing off.
+        prompt_registry = app.langfuse if settings.langfuse_configured else None
+        logger.info(
+            "Agent prompts loaded",
+            registry="langfuse" if prompt_registry else "local",
+            label=settings.LANGFUSE_PROMPT_LABEL,
+            versions=warm_prompt_cache(prompt_registry, settings.LANGFUSE_PROMPT_LABEL),
+        )
+
         app.graph = build_graph(
             llm_provider=app.llm_client,
             retrieval_controller=app.retrieval_controller,
             product_model=app.product_model,
             memory_controller=app.memory_controller,
             checkpointer=app.checkpointer,
+            prompt_registry=prompt_registry,
+            prompt_label=settings.LANGFUSE_PROMPT_LABEL,
         )
         logger.info("Graph Built successfully")
         
@@ -144,6 +164,7 @@ async def lifespan(app: FastAPI):
             logger.info(LogEventEnums.APPLICATION_STOPPED.value)
             await app.vectordb_client.disconnect()
             await app.db_engine.dispose()
+            app.langfuse.shutdown()
 
 
 app = FastAPI(lifespan=lifespan)
