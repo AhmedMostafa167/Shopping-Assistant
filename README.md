@@ -36,6 +36,7 @@ The application also maintains user profiles, conversations, and durable shoppin
 - [Conversation and memory workflow](#conversation-and-memory-workflow)
 - [Embedding rate-limit protection](#embedding-rate-limit-protection)
 - [Observability](#observability)
+- [Evaluation](#evaluation)
 - [Testing and CI](#testing-and-ci)
 - [Important implementation notes](#important-implementation-notes)
 - [Roadmap](#roadmap)
@@ -263,7 +264,9 @@ The application reads `.env` through `pydantic-settings`.
 | `COHERE_API_KEY` | Yes | Cohere API key. Never commit this value. | `...` |
 | `EMBEDDING_MODEL` | Yes | Cohere embedding model identifier. | `embed-english-v3.0` |
 | `EMBEDDING_MODEL_SIZE` | Yes | Stored vector dimension; must match the selected model/output. | `1024` |
-| `GENERATION_MODEL` | Yes | Cohere chat model identifier. | `command-r-plus` |
+| `GENERATION_BACKEND` | No | Provider for chat generation: `GROQ` or `COHERE`. Defaults to `COHERE`. | `GROQ` |
+| `GROQ_API_KEY` | With Groq | Groq API key. Never commit this value. | `...` |
+| `GENERATION_MODEL` | Yes | Chat model identifier for the generation backend. | `openai/gpt-oss-20b` |
 | `RERANKING_MODEL` | Yes | Cohere reranking model identifier. | `rerank-v4.0-pro` |
 | `DEFAULT_INPUT_MAX_CHARACTERS` | Yes | Maximum prompt characters sent by the provider wrapper. | `1000` |
 | `DEFAULT_GENERATION_MAX_OUTPUT_TOKENS` | Yes | Default maximum generated tokens. | `1000` |
@@ -453,6 +456,24 @@ curl -X POST http://localhost:8000/api/v1/chat \
 
 The `conversation_id` must belong to the supplied username. The agent can use the catalog and memory tools before returning a response.
 
+The response includes a `trace_id` when Langfuse tracing is enabled.
+
+### Rate a reply
+
+```bash
+curl -X POST http://localhost:8000/api/v1/chat/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "username": "alice",
+    "conversation_id": "00000000-0000-0000-0000-000000000000",
+    "trace_id": "<trace_id from the chat response>",
+    "helpful": false,
+    "comment": "It ignored my budget."
+  }'
+```
+
+The rating is stored in Langfuse as a `response_rating` score (1 helpful, 0 not helpful) on that reply's trace; `comment` is optional. Rating the same reply again replaces the earlier rating. The endpoint returns `202` when accepted and `503` when Langfuse tracing is disabled, because there is nowhere to store the rating. It does not yet verify that the `trace_id` belongs to the given conversation.
+
 ### Upload a catalog file
 
 The upload field name is `file`:
@@ -490,7 +511,11 @@ curl -X POST \
   http://localhost:8000/api/v1/data/embed/electronics_cellphones
 ```
 
-The endpoint loads up to 1,300 products for the category, embeds each product’s title and description, creates the category vector table if needed, and inserts the vectors keyed by `product_id`.
+The endpoint embeds every product in the category that has no embedding yet: it takes them in batches of 96 in `product_id` order, embeds each product’s title and description, and saves each batch before starting the next. The category vector table is created if needed, with vectors keyed by `product_id`.
+
+It is safe to call repeatedly. A failed or interrupted run loses at most one batch, and the next call continues where it stopped. Add `?max_products=N` to cap one call; `?max_products=0` embeds nothing and only reports how many products remain. The response includes `num_products_inserted` and `num_products_remaining`.
+
+When a run finishes and the vector table holds at least 1,000 rows, the endpoint builds an HNSW index for cosine distance if one does not exist yet. Later inserts are added to the index automatically. On the 12,730-product catalogue the index cut the median vector search from 35 ms to 3 ms, with 99.7% of the exact top-10 results still returned (measured over 100 searches).
 
 ### Direct hybrid retrieval
 
@@ -595,6 +620,73 @@ The Compose stack includes Prometheus and Grafana. FastAPI exposes `/metrics`, a
 - PostgreSQL Exporter.
 
 The Nginx proxy forwards both application traffic and `/metrics` to FastAPI.
+
+### LLM tracing with Langfuse
+
+Each `POST /api/v1/chat` request is recorded in [Langfuse](https://langfuse.com) as one trace named `chat-turn`, containing every model call and tool call the agent made, with token usage. Traces are grouped into one session per conversation and attributed to the username. The response includes the `trace_id`.
+
+Inside each `search_catalog` tool call, the retrieval pipeline is recorded step by step: `hybrid-search` contains `vector-search` (with `embed-query`), `keyword-search`, `fuse-results` and `rerank-results`, each with its duration and the product IDs and scores it returned.
+
+### Prompt management
+
+The agent's prompts are served from Langfuse prompt management, not from code:
+
+| Langfuse prompt | Purpose |
+| --- | --- |
+| `shopping-agent/system` | The agent's system prompt. |
+| `shopping-agent/first-turn-memory` | Extra instruction sent on the first turn of a conversation. |
+
+On every turn the application asks for the version carrying the `production` label. To release a new prompt, create a new version in Langfuse and move the `production` label to it; the running application picks it up within about a minute, with no deploy. Each model call in a trace is linked to the `shopping-agent/system` version that produced it.
+
+`src/agent/Templates.py` holds the fallback text. It is used when Langfuse keys are not set, or when Langfuse cannot be reached and no cached copy exists (a warning is logged). To create the prompts in a new Langfuse project, run once:
+
+```bash
+uv run python scripts/seed_langfuse_prompts.py
+```
+
+Cost is calculated by Langfuse from token counts and a per-model price. Models missing from Langfuse's built-in price list need a price added in the Langfuse project under Settings → Models; `openai/gpt-oss-20b` has one. After changing `GENERATION_MODEL`, check that the new model has a price or its cost will show as empty.
+
+Tracing is off by default. To turn it on, set `LANGFUSE_TRACING_ENABLED=true` with `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` (see `.env.example`). The application refuses to start if tracing is enabled without keys. With tracing on, user messages, assistant replies, tool results and stored memory facts are sent to Langfuse.
+
+## Evaluation
+
+Retrieval is evaluated stage by stage on a labelled set of 127 products (`eval/evalset.csv`), one query per product. Results from 2026-10-11, with 95% confidence intervals:
+
+| Mode | Queries | Right product first | In top 3 | Returned at all | Median time |
+| --- | --- | --- | --- | --- | --- |
+| Keyword only | 127 | 36% (28–45) | 47% | 56% (top 10) | 3 ms |
+| Vector only | 127 | 15% (10–22) | 24% | 41% (top 10) | 190 ms |
+| Hybrid (fused) | 127 | 24% (18–33) | 54% | 72% (top 10) | 190 ms |
+| Hybrid + rerank | 40 | 43% (29–58) | 60% | 60% (top 3) | 457 ms |
+
+Keyword and vector search succeed on different queries, which is why they are fused; fusion alone orders results poorly, and reranking restores first-place accuracy (better on 10 of 40 queries, worse on 2). Reranking is billed per search, so it is measured on a fixed 40-query subset; on those 40, plain hybrid scores 23% first and 50% in the top 3.
+
+Agent behaviour is evaluated on 12 tasks (`eval/agent_tasks.json`) covering tool use, memory and prices. Each task is a conversation with a fresh user, run 3 times through the real chat path and graded by code checks on the tool calls, the reply and the memory table. Baseline from 2026-10-11, prompt version 1:
+
+| Check | Passed |
+| --- | --- |
+| Stored facts read first | 36 of 36 |
+| Prices grounded in tool results | 25 of 25 |
+| Budget respected | 6 of 6 |
+| Stored fact used in search | 3 of 3 |
+| Tools used as expected | 25 of 27 |
+| Memory written correctly | 27 of 30 |
+
+9 of 12 tasks passed in all 3 runs. The main failure is storing one-off requests as lasting preferences.
+
+[eval/IMPROVEMENT_LOG.md](eval/IMPROVEMENT_LOG.md) records every measured change, with the method, the findings, and the decision taken after each one.
+
+```bash
+PYTHONPATH=src:eval uv run python eval/eval_retrieval.py --mode hybrid
+```
+
+Modes are `vector`, `keyword`, `hybrid` and `hybrid_rerank`. Add `--subset rerank` to run any mode on the 40-query subset, and `--judge-limit 30` to have an LLM judge the top results. Runs are logged to MLflow (`retrieval-stages`).
+
+```bash
+PYTHONPATH=src:eval uv run python eval/eval_agent.py --label baseline
+```
+
+Agent runs are recorded in Langfuse as the experiment `agent-behaviour`, one trace per run with the check results as scores, and summarised in MLflow. Runs are spaced 65 seconds apart for the generation model's rate limit and resume from saved results if interrupted.
 
 ## Testing and CI
 
