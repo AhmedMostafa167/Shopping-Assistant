@@ -1,0 +1,255 @@
+{
+  "dataset": "shopping-agent/behaviour",
+  "description": "End-to-end behaviour tasks for the shopping agent: tool use, memory, budget and grounded prices.",
+  "tasks": [
+    {
+      "id": "small-talk",
+      "capability": "No action needed",
+      "uses_search": false,
+      "turns": [
+        "Hi, what can you do?"
+      ],
+      "seed_memory": [],
+      "expect": {
+        "tools_forbidden": [
+          "search_catalog",
+          "filter_products",
+          "write_memory"
+        ],
+        "memory": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "id": "one-off-request",
+      "capability": "Search without storing",
+      "uses_search": true,
+      "turns": [
+        "Show me a wireless charger for my car."
+      ],
+      "seed_memory": [],
+      "expect": {
+        "tools_required": [
+          [
+            "search_catalog",
+            "filter_products"
+          ]
+        ],
+        "memory": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "id": "budget-limit",
+      "capability": "Respect a price limit",
+      "uses_search": true,
+      "turns": [
+        "I need a phone case under $15."
+      ],
+      "seed_memory": [],
+      "expect": {
+        "tools_required": [
+          [
+            "search_catalog",
+            "filter_products"
+          ]
+        ],
+        "max_price": 15
+      }
+    },
+    {
+      "id": "store-preference",
+      "capability": "Store a lasting preference",
+      "uses_search": false,
+      "turns": [
+        "I only buy Samsung products. Remember that."
+      ],
+      "seed_memory": [],
+      "expect": {
+        "tools_forbidden": [
+          "search_catalog",
+          "filter_products"
+        ],
+        "memory": {
+          "count": 1,
+          "contains": [
+            "samsung"
+          ]
+        }
+      }
+    },
+    {
+      "id": "preference-plus-request",
+      "capability": "Store a preference and search",
+      "uses_search": true,
+      "turns": [
+        "I always prefer black accessories. Find me a phone stand."
+      ],
+      "seed_memory": [],
+      "expect": {
+        "tools_required": [
+          [
+            "search_catalog",
+            "filter_products"
+          ]
+        ],
+        "memory": {
+          "count": 1,
+          "contains": [
+            "black"
+          ]
+        }
+      }
+    },
+    {
+      "id": "store-constraint",
+      "capability": "Store a lasting constraint",
+      "uses_search": false,
+      "turns": [
+        "My budget for accessories is always under $20."
+      ],
+      "seed_memory": [],
+      "expect": {
+        "tools_forbidden": [
+          "search_catalog",
+          "filter_products"
+        ],
+        "memory": {
+          "count": 1,
+          "contains": [
+            "20"
+          ]
+        }
+      }
+    },
+    {
+      "id": "update-fact",
+      "capability": "Modify a fact instead of adding one",
+      "uses_search": false,
+      "turns": [
+        "Actually I prefer red accessories now."
+      ],
+      "seed_memory": [
+        {
+          "fact_type": "preference",
+          "content": "User prefers blue phone accessories"
+        }
+      ],
+      "expect": {
+        "memory": {
+          "count": 1,
+          "contains": [
+            "red"
+          ]
+        }
+      }
+    },
+    {
+      "id": "no-duplicate-fact",
+      "capability": "Do not store what is already known",
+      "uses_search": true,
+      "turns": [
+        "I'm a Samsung person, show me a Samsung charger."
+      ],
+      "seed_memory": [
+        {
+          "fact_type": "preference",
+          "content": "User prefers Samsung products"
+        }
+      ],
+      "expect": {
+        "tools_required": [
+          [
+            "search_catalog",
+            "filter_products"
+          ]
+        ],
+        "memory": {
+          "count": 1
+        }
+      }
+    },
+    {
+      "id": "search-uses-memory",
+      "capability": "Use a stored fact in the search",
+      "uses_search": true,
+      "turns": [
+        "Find a case for my phone."
+      ],
+      "seed_memory": [
+        {
+          "fact_type": "history",
+          "content": "User's phone is an iPhone 13"
+        }
+      ],
+      "expect": {
+        "tools_required": [
+          [
+            "search_catalog"
+          ]
+        ],
+        "search_query_contains": [
+          "iphone 13"
+        ],
+        "memory": {
+          "count": 1
+        }
+      }
+    },
+    {
+      "id": "not-in-catalogue",
+      "capability": "Do not invent products",
+      "uses_search": true,
+      "turns": [
+        "Do you sell kayaks?"
+      ],
+      "seed_memory": [],
+      "expect": {
+        "memory": {
+          "count": 0
+        }
+      }
+    },
+    {
+      "id": "explicit-filters",
+      "capability": "Use filters for explicit limits",
+      "uses_search": false,
+      "turns": [
+        "Show me products under $10 rated above 4.5."
+      ],
+      "seed_memory": [],
+      "expect": {
+        "tools_required": [
+          [
+            "filter_products"
+          ]
+        ],
+        "filter_limits": {
+          "max_price": 10,
+          "min_rating": 4.5
+        },
+        "max_price": 10
+      }
+    },
+    {
+      "id": "two-turn-update",
+      "capability": "Update a fact across turns",
+      "uses_search": false,
+      "turns": [
+        "I like red phone cases.",
+        "Actually, make that green."
+      ],
+      "seed_memory": [],
+      "expect": {
+        "memory": {
+          "count": 1,
+          "contains": [
+            "green"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,132 +1,243 @@
-"""Evaluate hybrid retrieval for the shopping assistant: strict ID metrics + LLM-judged relevance (Ragas)."""
-import argparse, asyncio, math, os, time
+"""Evaluate each stage of product retrieval on the labelled query set.
+
+    PYTHONPATH=src:eval uv run python eval/eval_retrieval.py --mode hybrid
+
+Modes: vector, keyword, hybrid (both fused), hybrid_rerank (the production path; paid).
+Results are saved per query as the run goes, so an interrupted run continues where it
+stopped and never pays for the same query twice.
+"""
+import argparse
+import asyncio
+import csv
+import json
+import os
+import subprocess
+import time
 from pathlib import Path
 
-import mlflow
-import pandas as pd
-from ragas import EvaluationDataset, SingleTurnSample, evaluate
-from ragas.llms import LangchainLLMWrapper
-from ragas.metrics import ContextRelevance
+# Evaluation runs must not flood Langfuse with one trace per query.
+os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 
-from helpers.config import get_settings
-from main import app, lifespan
-from models.enums.DataBaseEnums import DataBaseEnums
+from sqlalchemy import text as sql_text  # noqa: E402
 
-KS = (1, 3, 5, 10)
+from helpers.config import get_settings  # noqa: E402
+from main import app, lifespan  # noqa: E402
+from models.enums.DataBaseEnums import DataBaseEnums  # noqa: E402
+from retrieval_metrics import (  # noqa: E402
+    KS,
+    first_relevant_rank,
+    rerank_subset,
+    results_filename,
+    select_queries,
+    summarize,
+)
+
+MODES = ("vector", "keyword", "hybrid", "hybrid_rerank")
+EVALSET = Path(__file__).parent / "evalset.csv"
+
+# A labelled product and its exact duplicates (same title and description) are the
+# same item to a shopper, so any of them is a correct result.
+RELEVANT_IDS_SQL = sql_text("""
+    SELECT labelled.source_id, labelled.product_id AS labelled_id, twin.product_id AS relevant_id
+    FROM products labelled
+    JOIN products twin
+      ON twin.title = labelled.title AND twin.description = labelled.description
+    WHERE labelled.source_id = ANY(:source_ids)
+""")
 
 
-def product_text(p) -> str:
-    return f"{p.title}\n{(p.description or '')[:500]}\nprice: {p.price}"
+def load_queries(mode: str, subset: str) -> list[dict]:
+    with open(EVALSET, newline="") as handle:
+        rows = [{**row, "product_id": row["product_id"].strip()} for row in csv.DictReader(handle)]
+    selected = select_queries(rows)
+    if mode == "hybrid_rerank" or subset == "rerank":
+        selected = rerank_subset(selected)
+    return selected
 
 
-async def retrieve_all(df, args):
-    ids, texts, latencies = [], [], []
-    async with lifespan(app):
-        for q in df["query"]:
-            t0 = time.monotonic()
-            products = await app.retrieval_controller.hybrid_search(
-                query=q.strip(), top_k=args.top_k, category_name=args.category_name
-            )
-            latencies.append(time.monotonic() - t0)
-            ids.append([str(p.source_id) for p in products])
-            texts.append([product_text(p) for p in products])
-    return ids, texts, latencies
+async def load_relevant_ids(source_ids: list[str]) -> tuple[dict, dict]:
+    """Map each labelled source id to its own product ids and to those plus duplicates."""
+    strict, with_twins = {}, {}
+    async with app.db_client() as session:
+        result = await session.execute(RELEVANT_IDS_SQL, {"source_ids": source_ids})
+        for source_id, labelled_id, relevant_id in result.all():
+            strict.setdefault(source_id, set()).add(labelled_id)
+            with_twins.setdefault(source_id, set()).add(relevant_id)
+    return strict, with_twins
 
 
-def main(args):
-    df = pd.read_csv(args.csv, dtype={"product_id": str})
-    assert {"query", "product_id"} <= set(df.columns), "CSV needs: query, product_id"
-    df["product_id"] = df["product_id"].str.strip()
-    
-    if args.limit:
-        df = df.head(args.limit)
-        
-    out = Path(args.output_dir)
-    out.mkdir(parents=True, exist_ok=True)
-
-    # 1) retrieval
-    ids, texts, latencies = asyncio.run(retrieve_all(df, args))
-    df["retrieved_ids"], df["latency_s"] = ids, latencies
-
-    # 2) strict metrics (only the labeled product counts as correct)
-    df["rank"] = [i.index(pid) + 1 if pid in i else None for i, pid in zip(ids, df["product_id"])]
-    df["rr"] = df["rank"].map(lambda r: 1 / r if pd.notna(r) else 0.0)
-    found = df["rank"].notna()
-    metrics = {
-        "queries": len(df),
-        "strict_mrr": df["rr"].mean(),
-        "miss_rate": 1 - found.mean(),                      # labeled product not in top_k
-        "mean_rank_when_found": df.loc[found, "rank"].mean(),
-        "empty_results_rate": sum(not i for i in ids) / len(ids),
-        "latency_p50_s": df["latency_s"].quantile(0.5),
-        "latency_p95_s": df["latency_s"].quantile(0.95),
-    }
-    for k in KS:
-        if k <= args.top_k:
-            metrics[f"strict_hit_at_{k}"] = (df["rank"] <= k).mean()
-            metrics[f"strict_ndcg_at_{k}"] = df["rank"].map(
-                lambda r: 1 / math.log2(r + 1) if pd.notna(r) and r <= k else 0.0
-            ).mean()
-
-    from ragas.metrics import ContextRelevance
-
-    # 3) LLM-judged relevance of the top judge_k results (catches relevant products the labels miss)
-    samples = [
-        SingleTurnSample(
-            user_input=q, 
-            retrieved_contexts=t[: args.judge_k]
+async def retrieve(mode: str, query: str, top_k: int, category_name: str) -> list[int]:
+    controller = app.retrieval_controller
+    if mode == "vector":
+        results = await controller.vector_search(query, top_k, category_name)
+    elif mode == "keyword":
+        results = await controller.keyword_search(query, top_k)
+    else:
+        results = await controller.hybrid_search(
+            query, top_k, category_name, rerank=(mode == "hybrid_rerank")
         )
-        for q, t in zip(df["query"], texts)
-    ]
-    
+    return [result.product_id for result in results]
+
+
+def product_text(product) -> str:
+    return f"{product.title}\n{(product.description or '')[:500]}\nprice: {product.price}"
+
+
+async def judge_contexts(rows: list[dict], judge_limit: int, judge_k: int) -> list[dict]:
+    """The query and top results, as text, for the first judge_limit queries."""
+    samples = []
+    for row in rows[:judge_limit]:
+        top_ids = row["retrieved_ids"][:judge_k]
+        products = {p.product_id: p for p in await app.retrieval_controller.get_products_by_ids(top_ids)}
+        samples.append({
+            "query": row["query"],
+            "contexts": [product_text(products[i]) for i in top_ids if i in products],
+        })
+    return samples
+
+
+def judge_relevance(samples: list[dict]) -> dict:
+    """LLM-judged relevance of the retrieved products (catches good results the labels miss).
+
+    Runs one request at a time: the judge model's rate limit is far below what
+    Ragas sends when it runs in parallel.
+    """
     from langchain_groq import ChatGroq
-    judge = LangchainLLMWrapper(
-        ChatGroq(model=get_settings().GENERATION_MODEL, temperature=0, max_tokens=1024)
-    )
-    
+    from ragas import EvaluationDataset, SingleTurnSample, evaluate
+    from ragas.llms import LangchainLLMWrapper
+    from ragas.metrics import ContextRelevance
+    from ragas.run_config import RunConfig
+
+    settings = get_settings()
+    judge = LangchainLLMWrapper(ChatGroq(
+        model=settings.GENERATION_MODEL, api_key=settings.GROQ_API_KEY,
+        temperature=0, max_tokens=1024,
+    ))
+    dataset = EvaluationDataset(samples=[
+        SingleTurnSample(user_input=sample["query"], retrieved_contexts=sample["contexts"])
+        for sample in samples if sample["contexts"]
+    ])
     judged = evaluate(
-        EvaluationDataset(samples=samples), metrics=[ContextRelevance()],
-        llm=judge, raise_exceptions=False,
+        dataset, metrics=[ContextRelevance()], llm=judge, raise_exceptions=False,
+        run_config=RunConfig(max_workers=1, max_retries=10, max_wait=90, timeout=180),
     ).to_pandas()
-    for name, value in judged.select_dtypes("number").mean().items():
-        metrics[f"judge_{name}"] = value
-    metrics["judged_queries"] = len(judged)
+    scores = judged.select_dtypes("number")
+    return {
+        "judged_queries": int(scores.iloc[:, 0].notna().sum()),
+        **{f"judge_{name}": float(value) for name, value in scores.mean().items()},
+    }
 
-    # 4) save + log
-    df.to_csv(out / "retrieval_results.csv", index=False)
-    judged.to_csv(out / "judge_scores.csv", index=False)
 
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000"))
+async def run(args) -> tuple[dict, list[dict]]:
+    queries = load_queries(args.mode, args.subset)
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    results_path = out_dir / results_filename(args.mode, args.subset)
+
+    done = {}
+    if results_path.exists():
+        done = {row["query"]: row for row in map(json.loads, results_path.open())}
+
+    async with lifespan(app):
+        strict_ids, twin_ids = await load_relevant_ids([q["product_id"] for q in queries])
+        with results_path.open("a") as handle:
+            for item in queries:
+                if item["query"] in done:
+                    continue
+                started = time.perf_counter()
+                retrieved = await retrieve(
+                    args.mode, item["query"].strip(), args.top_k, args.category_name
+                )
+                row = {
+                    "mode": args.mode,
+                    "query": item["query"],
+                    "angle": item["angle"],
+                    "labelled_source_id": item["product_id"],
+                    "retrieved_ids": retrieved,
+                    "latency_s": time.perf_counter() - started,
+                }
+                handle.write(json.dumps(row) + "\n")
+                handle.flush()
+                done[item["query"]] = row
+
+        rows = [done[item["query"]] for item in queries]
+        samples = await judge_contexts(rows, args.judge_limit, args.judge_k)
+
+    latencies = [row["latency_s"] for row in rows]
+    ranks = [
+        first_relevant_rank(row["retrieved_ids"], twin_ids.get(row["labelled_source_id"], set()))
+        for row in rows
+    ]
+    strict_ranks = [
+        first_relevant_rank(row["retrieved_ids"], strict_ids.get(row["labelled_source_id"], set()))
+        for row in rows
+    ]
+    metrics = summarize(ranks, latencies)
+    strict = summarize(strict_ranks, latencies)
+    metrics.update({f"strict_{name}": strict[name] for name in ("hit_at_10", "mrr")})
+    metrics["avg_results_returned"] = sum(len(row["retrieved_ids"]) for row in rows) / len(rows)
+    metrics["labels_missing_from_catalogue"] = sum(
+        1 for item in queries if item["product_id"] not in strict_ids
+    )
+    return metrics, samples
+
+
+def log_to_mlflow(args, metrics: dict) -> None:
+    import mlflow
+
+    settings = get_settings()
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
     mlflow.set_experiment(args.experiment)
-    
-    import subprocess
     try:
-        git_commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
+        git_commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
     except Exception:
         git_commit = "unknown"
-        
-    with mlflow.start_run(run_name=args.run_name):
+    with mlflow.start_run(run_name=args.run_name or f"{args.mode}-{args.subset}"):
         mlflow.set_tag("git_commit", git_commit)
-        mlflow.set_tag("framework", "ragas")
-        mlflow.log_params({"csv": args.csv, "top_k": args.top_k, "judge_k": args.judge_k,
-                           "category": args.category_name, 
-                           "generation_model": get_settings().GENERATION_MODEL,
-                           "embedding_model": get_settings().EMBEDDING_MODEL})
-        mlflow.log_metrics({k: float(v) for k, v in metrics.items()})
-        mlflow.log_artifacts(str(out))
+        mlflow.log_params({
+            "mode": args.mode,
+            "subset": args.subset,
+            "top_k": args.top_k,
+            "category": args.category_name,
+            "embedding_model": settings.EMBEDDING_MODEL,
+            "reranking_model": settings.RERANKING_MODEL if args.mode == "hybrid_rerank" else "none",
+            "query_selection": "one per labelled product, phrasing rotated",
+        })
+        mlflow.log_metrics({name: float(value) for name, value in metrics.items()})
 
-    for k, v in metrics.items():
-        print(f"{k}: {v:.4f}")
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--mode", required=True, choices=MODES)
+    parser.add_argument("--subset", default="all", choices=("all", "rerank"),
+                        help="'rerank' runs any mode on the 40 queries used for hybrid_rerank")
+    parser.add_argument("--top-k", type=int, default=10)
+    parser.add_argument("--category-name", default=DataBaseEnums.DEFAULT_CATEGORY_NAME.value)
+    parser.add_argument("--experiment", default="retrieval-stages")
+    parser.add_argument("--run-name")
+    parser.add_argument("--output-dir", default="eval_outputs")
+    parser.add_argument("--no-mlflow", action="store_true")
+    parser.add_argument("--judge-limit", type=int, default=0,
+                        help="Also have an LLM judge the top results of this many queries")
+    parser.add_argument("--judge-k", type=int, default=5, help="Results judged per query")
+    args = parser.parse_args()
+
+    metrics, samples = asyncio.run(run(args))
+    if samples:
+        metrics.update(judge_relevance(samples))
+    if not args.no_mlflow:
+        log_to_mlflow(args, metrics)
+
+    print(f"mode={args.mode} subset={args.subset} queries={metrics['queries']}")
+    for k in KS:
+        print(
+            f"  hit@{k}: {metrics[f'hit_at_{k}']:.3f} "
+            f"(95% CI {metrics[f'hit_at_{k}_ci_low']:.3f}-{metrics[f'hit_at_{k}_ci_high']:.3f})"
+        )
+    for name, value in metrics.items():
+        if not name.startswith("hit_at_") and name != "queries":
+            print(f"  {name}: {value:.3f}")
 
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser()
-    p.add_argument("--csv", required=True)
-    p.add_argument("--top-k", type=int, default=10)
-    p.add_argument("--judge-k", type=int, default=5)  # results judged per query
-    p.add_argument("--category-name", default=DataBaseEnums.DEFAULT_CATEGORY_NAME.value)
-    p.add_argument("--experiment", default="retrieval-eval")
-    p.add_argument("--run-name")
-    p.add_argument("--limit", type=int, default=50, help="Limit number of evaluation examples")
-    p.add_argument("--output-dir", default="eval_outputs")
-    main(p.parse_args())
+    main()
