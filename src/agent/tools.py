@@ -1,3 +1,5 @@
+import math
+
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from structlog import get_logger
@@ -10,6 +12,21 @@ from .schemas import (
 )
 
 logger = get_logger(__name__)
+
+
+def format_recommendation_score(product) -> str:
+    score = product.recommendation_score
+    if score is None:
+        return "no ratings yet"
+    # Spelled out so the model does not present it as the product's star rating.
+    return f"recommendation score {score}/5 (adjusted for number of reviews; not the average rating)"
+
+
+def format_price(product) -> str:
+    price = product.price
+    if price is None or math.isnan(price):
+        return "price not listed"
+    return f"${price}"
 
 
 def make_search_catalog_tool(retrieval_controller):
@@ -25,7 +42,8 @@ def make_search_catalog_tool(retrieval_controller):
         if not products:
             return "No matching products found."
         return "\n".join(
-            f"- {p.title} (${p.price}, rating {p.average_rating}): {p.description}"
+            f"- {p.title} ({format_price(p)}, {format_recommendation_score(p)}) "
+            f"[Image URL: {p.image}]: {p.description}"
             for p in products
         )
 
@@ -55,7 +73,9 @@ def make_filter_products_tool(product_model):
         if not products:
             return "No products matched those filters."
         return "\n".join(
-            f"- {p.title} (${p.price}, rating {p.average_rating})" for p in products
+            f"- {p.title} ({format_price(p)}, {format_recommendation_score(p)}) "
+            f"[Image URL: {p.image}]"
+            for p in products
         )
 
     return filter_products
