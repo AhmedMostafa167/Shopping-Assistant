@@ -12,3 +12,4 @@ class ResponseEnums(Enum):
     ASSET_NOT_FOUND = "asset_not_found"
     PRODUCT_RETRIEVAL_FAILED = "product_retrieval_failed"
     PRODUCT_RETRIEVAL_SUCCESS = "product_retrieval_success"
+    VECTOR_INDEXING_FAILED = "vector_indexing_failed"

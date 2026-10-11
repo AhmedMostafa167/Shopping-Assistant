@@ -1,7 +1,7 @@
 from .BaseDataModel  import BaseDataModel
 from .db_schemes import Product
 from sqlalchemy.future import select
-from sqlalchemy import func, delete, desc
+from sqlalchemy import column, func, delete, desc, exists, table
 
 class ProductModel(BaseDataModel):
     def __init__(self, db_client: object):
@@ -52,6 +52,39 @@ class ProductModel(BaseDataModel):
             
             return products
         
+    @staticmethod
+    def _without_embedding(category_name: str, vector_table_name: str):
+        """Filter: products of a category with no row in the given vector table."""
+        vectors = table(vector_table_name, column("product_id"))
+        return (
+            Product.category_name == category_name,
+            ~exists().where(vectors.c.product_id == Product.product_id),
+        )
+
+    async def get_products_without_embedding(self, category_name: str,
+                                             vector_table_name: str, limit: int):
+        async with self.db_client() as session:
+            # Ordered, so every run walks the catalogue in the same sequence.
+            query = (
+                select(Product)
+                .where(*self._without_embedding(category_name, vector_table_name))
+                .order_by(Product.product_id)
+                .limit(limit)
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    async def count_products_without_embedding(self, category_name: str,
+                                               vector_table_name: str) -> int:
+        async with self.db_client() as session:
+            query = (
+                select(func.count())
+                .select_from(Product)
+                .where(*self._without_embedding(category_name, vector_table_name))
+            )
+            result = await session.execute(query)
+            return result.scalar_one()
+
     async def filter_products(self, category_name: str, min_price: float = None, max_price: float = None,
                                min_rating: float = None, top_k: int = 10):
         async with self.db_client() as session:

@@ -1,5 +1,5 @@
 from .providers import PGVectorProvider
-from .VectorDBEnums import VectorDBEnums, PGVectorInexTypeEnums
+from .VectorDBEnums import VectorDBEnums, PGVectorDistanceMethodEnums
 from controllers.BaseController import BaseController
 from sqlalchemy.orm import sessionmaker
 
@@ -17,6 +17,6 @@ class VectorDBProviderFactory:
             return PGVectorProvider(
                 self.db_client,
                 default_vector_size=self.config.EMBEDDING_MODEL_SIZE,
-                distance_method=PGVectorInexTypeEnums.HNSW.value,
-                index_threshold=self.config.VECTOR_DB_BACKEND
+                # Must match the operator used in search (<=> is cosine distance).
+                distance_method=PGVectorDistanceMethodEnums.COSINE.value,
                 )

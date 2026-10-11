@@ -7,7 +7,7 @@ import json
 
 from helpers.logging import get_logger
 class PGVectorProvider(VectorDBInterface):
-    def __init__(self, db_client, default_vector_size: int = 786, distance_method: str = None, index_threshold: int = 1000):
+    def __init__(self, db_client, default_vector_size: int = 786, distance_method: str = PGVectorDistanceMethodEnums.COSINE.value, index_threshold: int = 1000):
         
         self.db_client = db_client
         self.default_vector_size = default_vector_size
@@ -183,11 +183,13 @@ class PGVectorProvider(VectorDBInterface):
         vector = "[" + ",".join([ str(v) for v in vector ]) + "]"
         async with self.db_client() as session:
             async with session.begin():
-                search_sql = sql_text(f'SELECT {PGVectorTableSchemaEnums.PRODUCT_ID.value} as product_id, 1 -({PGVectorTableSchemaEnums.VECTOR.value} <=> :vector) as score'
+                # Ordering by the distance itself (ascending) is what lets Postgres use
+                # the vector index; ordering by a derived score would force a full scan.
+                search_sql = sql_text(f'SELECT {PGVectorTableSchemaEnums.PRODUCT_ID.value} as product_id, {PGVectorTableSchemaEnums.VECTOR.value} <=> :vector as distance'
                                         f' FROM {table_name}'
                                         f' JOIN products USING ({PGVectorTableSchemaEnums.PRODUCT_ID.value})'
                                         f' WHERE products.category_name = :category_name'
-                                        ' ORDER BY score DESC'
+                                        ' ORDER BY distance'
                                         f' LIMIT {limit}')
                 results = await session.execute(search_sql, {
                                                              "category_name": category_name, 
@@ -199,7 +201,7 @@ class PGVectorProvider(VectorDBInterface):
                 return [
                     VectorSearchResult(
                         product_id=record["product_id"],
-                        score=record["score"]
+                        score=1 - record["distance"]
                     )
                     for record in records
                 ]
@@ -236,9 +238,12 @@ class PGVectorProvider(VectorDBInterface):
                         
                 self.logger.info("vector_index_creation_started", table_name=table_name)
                 
-                create_index_sql = sql_text(f"CREATE INDEX {index_name} ON {table_name} USING {index_type} ({PGVectorTableSchemaEnums.VECTOR.value});")
+                # The operator class ties the index to one distance; this index type has no default.
+                create_index_sql = sql_text(f"CREATE INDEX {index_name} ON {table_name} USING {index_type} ({PGVectorTableSchemaEnums.VECTOR.value} {self.distance_method});")
                 await session.execute(create_index_sql)
                 self.logger.info("vector_index_created", table_name=table_name)
+
+        return True
                 
                 
     async def reset_vector_index(self, table_name: str, 

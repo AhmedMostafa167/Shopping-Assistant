@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, status, Request
+from fastapi import APIRouter, Depends, Query, UploadFile, status, Request
 from fastapi.responses import JSONResponse
 from helpers.config import get_settings, Settings
 from helpers.logging import get_logger
@@ -199,37 +199,49 @@ async def store_data(request: Request,
 @data_router.post('/embed/{category_name}')
 async def embed_data(request: Request,
                   category_name: str,
+                  max_products: int | None = Query(default=None, ge=0),
                   app_settings: Settings = Depends(get_settings)):
-    
+    """Embed the category's products that have no embedding yet.
+
+    Safe to call repeatedly: it continues where the previous call stopped.
+    max_products caps this call (0 only reports how many remain).
+    """
     product_model = await ProductModel.create_instance(db_client=request.app.db_client)
-    products = await product_model.get_products_by_category(category_name=category_name, 
-                                                            page_no=1, page_size=1300
-                                                            )
-    
-    if len(products) == 0:
-        logger.warning(MessageEnums.NO_PRODUCTS_FOUND.value, category_name=category_name)
-    
+
     embeddings_controller = EmbeddingsController(
         vectordb_client=request.app.vectordb_client,
         embedding_client=request.app.embedding_client
     )
-    
-    result = await embeddings_controller.index_into_vectordb(category_name=category_name, products=products)
-    
-    if result: 
-        logger.info(
-            LogEventEnums.VECTOR_INDEXING_COMPLETED.value,
+
+    try:
+        result = await embeddings_controller.index_missing_products(
             category_name=category_name,
-            product_count=len(products),
+            product_model=product_model,
+            max_products=max_products,
         )
+    except Exception:
+        logger.exception(LogEventEnums.VECTOR_INDEXING_FAILED.value, category_name=category_name)
         return JSONResponse(
-            status_code=status.HTTP_200_OK, 
-            content={
-                    "message": ResponseEnums.PRODUCT_INSERTION_SUCCESS.value,
-                    "num_products_inserted": len(products)
-                    }
-            )
-    
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": ResponseEnums.VECTOR_INDEXING_FAILED.value}
+        )
+
+    logger.info(
+        LogEventEnums.VECTOR_INDEXING_COMPLETED.value,
+        category_name=category_name,
+        product_count=result["embedded"],
+        remaining_count=result["remaining"],
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+                "message": ResponseEnums.PRODUCT_INSERTION_SUCCESS.value,
+                "num_products_inserted": result["embedded"],
+                "num_products_remaining": result["remaining"],
+                }
+        )
+
+
 @data_router.post('/retrieve/{category_name}')
 async def retrieve_products(request: Request,
                     category_name: str,
@@ -261,6 +273,8 @@ async def retrieve_products(request: Request,
             if isinstance(value, float) and math.isnan(value):
                 value = None
             result[column.key] = value
+
+        result["recommendation_score"] = model.recommendation_score
 
         return result
     return JSONResponse(
