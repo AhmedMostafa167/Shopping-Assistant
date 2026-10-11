@@ -1,2 +1,4 @@
 mlflow_data/
 *.csv
+# The labelled retrieval evaluation set is versioned so results can be reproduced.
+!evalset.csv
