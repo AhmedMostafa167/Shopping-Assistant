@@ -1,6 +1,6 @@
-# Docker Setup for MiniRAG Application
+# Docker Setup for Shopping Assistant Application
 
-This directory contains the Docker setup for the MiniRAG application, including all necessary services for development and monitoring.
+This directory contains the Docker setup for the Shopping Assistant application, including all necessary services for development and monitoring.
 
 ## Services
 
@@ -28,7 +28,7 @@ cp .env.example.postgres-exporter .env.postgres-exporter
 
 # Setup the Alembic configuration for the FastAPI application
 cd ..
-cd docker/minirag
+cd shopping_assistant
 cp alembic.example.ini alembic.ini
 
 ### 2. Start the services
@@ -180,3 +180,15 @@ If you see connection errors when starting the services:
    docker compose logs --tail=100 fastapi
    docker compose logs --tail=100 pgvector
    ```
+5. **Database connection timed out (GitHub Codespaces)**: the FastAPI container restarts in a loop with
+   ```
+   connection to server at "pgvector" (...), port 5432 failed: Connection timed out
+   ```
+   while the database is reachable from the Codespace itself on `localhost:5432`.
+
+   A Codespace shares its host's firewall, which has an older rule set that drops traffic between
+   containers on a Compose network. Credentials and subnets are not the cause. Allow that traffic:
+   ```bash
+   sudo iptables-legacy -I DOCKER-USER -i br-+ -o br-+ -j ACCEPT
+   ```
+   The rule is lost when the Codespace stops, so run it again after each start.
