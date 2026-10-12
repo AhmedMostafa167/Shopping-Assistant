@@ -4,10 +4,16 @@
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Agent-1C3C3C)](https://langchain-ai.github.io/langgraph/)
-[![Cohere](https://img.shields.io/badge/Cohere-LLM%20%7C%20Embeddings%20%7C%20Reranking-39594D)](https://cohere.com/)
+[![Groq](https://img.shields.io/badge/Groq-Generation-F55036)](https://groq.com/)
+[![Cohere](https://img.shields.io/badge/Cohere-Embeddings%20%7C%20Reranking-39594D)](https://cohere.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![pgvector](https://img.shields.io/badge/pgvector-Vector%20Search-3B82F6)](https://github.com/pgvector/pgvector)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-ORM-D71F00)](https://www.sqlalchemy.org/)
+[![Langfuse](https://img.shields.io/badge/Langfuse-Tracing%20%7C%20Prompts%20%7C%20Experiments-E11312)](https://langfuse.com/)
+[![MLflow](https://img.shields.io/badge/MLflow-Experiment%20Tracking-0194E2?logo=mlflow&logoColor=white)](https://mlflow.org/)
+[![Ragas](https://img.shields.io/badge/Ragas-LLM%20Judge-4B5563)](https://docs.ragas.io/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/)
+[![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800?logo=grafana&logoColor=white)](https://grafana.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Pytest](https://img.shields.io/badge/Pytest-Tests-0A9EDC?logo=pytest&logoColor=white)](https://pytest.org/)
 [![uv](https://img.shields.io/badge/uv-Dependencies-DE5FE9)](https://docs.astral.sh/uv/)
@@ -164,7 +170,7 @@ Controllers
 - **Routes (`src/routes/`)**: HTTP request validation and response handling.
 - **Controllers (`src/controllers/`)**: ingestion, preprocessing, embedding, retrieval, and file-management logic.
 - **Models (`src/models/`)**: database access methods and SQLAlchemy schema definitions.
-- **LLM providers (`src/stores/llm/`)**: Cohere chat, embedding, and reranking integration behind a provider factory.
+- **LLM providers (`src/stores/llm/`)**: Groq and Cohere chat, and Cohere embedding and reranking, behind a provider factory.
 - **Vector database providers (`src/stores/vectordb/`)**: pgvector table management, indexing, insertion, and similarity search.
 - **Agent (`src/agent/`)**: LangGraph state, prompts, tools, and memory orchestration.
 - **Utilities (`src/utils/`)**: rank fusion and Prometheus metrics.
@@ -190,18 +196,21 @@ Controllers
 - **ORM:** SQLAlchemy async sessions.
 - **Migrations:** Alembic.
 - **Agent orchestration:** LangGraph.
-- **LLM provider:** Cohere through `langchain-cohere`.
-- **Embeddings:** Cohere Embed through `CohereEmbeddings`.
-- **Vector search:** PostgreSQL pgvector with cosine-style distance queries.
+- **Generation model:** Groq through `langchain-groq` (configurable; Cohere chat is also supported).
+- **Embeddings and reranking:** Cohere Embed and Cohere Rerank through `langchain-cohere`.
+- **Vector search:** PostgreSQL pgvector with an HNSW index on cosine distance.
 - **Keyword search:** PostgreSQL `tsvector` and GIN indexing.
 - **Data processing:** pandas and PyArrow.
 - **Dependency management:** uv with the committed `uv.lock` file.
-- **Observability:** Prometheus client, Prometheus, Grafana, PostgreSQL Exporter, and Node Exporter.
+- **Service metrics:** Prometheus client, Prometheus, Grafana, PostgreSQL Exporter, and Node Exporter.
+- **LLM observability:** Langfuse for tracing, user-feedback scores, prompt management, and agent experiments.
+- **Evaluation:** MLflow for experiment tracking, Ragas for an LLM relevance judge, and code checks for agent behaviour.
 
 ## Repository layout
 
 ```text
 .
+├── .agent/skills/                       Agent skills, including the Langfuse skill
 ├── .env.example                         Application configuration template
 ├── .github/workflows/CI.yml             GitHub Actions lint/test workflow
 ├── docker/
@@ -209,9 +218,12 @@ Controllers
 │   ├── nginx/default.conf               Nginx reverse proxy
 │   ├── prometheus/prometheus.yml        Prometheus scrape configuration
 │   └── shopping_assistant/              Application image and migration entrypoint
+├── eval/                                Retrieval and agent evaluation, tasks, and the improvement log
+├── scripts/                             Prompt seeding and version publish/promote
 ├── src/
 │   ├── agent/                           LangGraph agent, prompts, tools, and memory
 │   ├── controllers/                     Application and retrieval logic
+│   ├── helpers/                         Configuration, logging, and Langfuse client setup
 │   ├── models/                          Database models and Alembic migrations
 │   ├── routes/                          FastAPI routes and request schemas
 │   ├── stores/                           LLM and vector database providers
@@ -661,18 +673,20 @@ Retrieval is evaluated stage by stage on a labelled set of 127 products (`eval/e
 
 Keyword and vector search succeed on different queries, which is why they are fused; fusion alone orders results poorly, and reranking restores first-place accuracy (better on 10 of 40 queries, worse on 2). Reranking is billed per search, so it is measured on a fixed 40-query subset; on those 40, plain hybrid scores 23% first and 50% in the top 3.
 
-Agent behaviour is evaluated on 12 tasks (`eval/agent_tasks.json`) covering tool use, memory and prices. Each task is a conversation with a fresh user, run 3 times through the real chat path and graded by code checks on the tool calls, the reply and the memory table. Baseline from 2026-10-11, prompt version 1:
+Agent behaviour is evaluated on 12 tasks (`eval/agent_tasks.json`) covering tool use, memory and prices. Each task is a conversation with a fresh user, run 3 times through the real chat path and graded by code checks on the tool calls, the reply and the memory table. A prompt change is evaluated as a candidate under the `staging` label before it is promoted.
 
-| Check | Passed |
-| --- | --- |
-| Stored facts read first | 36 of 36 |
-| Prices grounded in tool results | 25 of 25 |
-| Budget respected | 6 of 6 |
-| Stored fact used in search | 3 of 3 |
-| Tools used as expected | 25 of 27 |
-| Memory written correctly | 27 of 30 |
+| Check | Prompt v1 (2026-10-11) | Prompt v2 (2026-10-12) |
+| --- | --- | --- |
+| Memory written correctly | 27 of 30 | 30 of 30 |
+| Tools used as expected | 25 of 27 | 27 of 27 |
+| Missing price not shown as "nan" | 17 of 24 | 21 of 21 |
+| Stored facts read first | 36 of 36 | 36 of 36 |
+| Prices grounded in tool results | 25 of 25 | 21 of 21 |
+| Budget respected | 6 of 6 | 6 of 6 |
+| Stored fact used in search | 3 of 3 | 3 of 3 |
+| **Tasks passed in all 3 runs** | **7 of 12** | **12 of 12** |
 
-9 of 12 tasks passed in all 3 runs. The main failure is storing one-off requests as lasting preferences.
+Version 1 stored one-off requests as lasting preferences and ran searches nobody asked for. Version 2 fixed both and made 29% fewer catalogue searches on the same tasks. The task set is now saturated and needs harder cases; the log discusses how much to read into the result.
 
 [eval/IMPROVEMENT_LOG.md](eval/IMPROVEMENT_LOG.md) records every measured change, with the method, the findings, and the decision taken after each one.
 
@@ -737,7 +751,7 @@ The following items are natural next steps for production hardening:
 - Add an explicit product comparison tool.
 - Add paginated catalog ingestion and a background job for large datasets.
 - Add durable ingestion status and retry reporting.
-- Add retrieval evaluation datasets and ranking-quality metrics.
+- Add harder agent evaluation tasks (hostile and off-topic input, longer conversations) and run-time guardrails.
 - Add Cohere reranking rate limiting and batching if candidate sets grow beyond the current small retrieval window.
 - Add typed response models for all data endpoints.
 - Add database health/readiness endpoints and safer startup failure reporting.

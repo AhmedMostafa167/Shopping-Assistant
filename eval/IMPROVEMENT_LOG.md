@@ -255,7 +255,7 @@ summary is in MLflow under `agent-behaviour`.
 evidence: stop storing one-off requests, stop searching when not asked, and fix the tool
 output wording (score label, missing prices).
 
-## Entry 6 — Prompt version 2 and tool wording (2026-10-11, in progress)
+## Entry 6 — Prompt version 2 and tool wording (2026-10-11 to 2026-10-12)
 
 **Change.** Three changes measured in one evaluation against the entry 5 baseline:
 
@@ -267,52 +267,76 @@ output wording (score label, missing prices).
 3. Tool output wording: the score is labelled as a recommendation score that is not the
    average rating, and a missing price is shown as "price not listed" instead of "$nan".
 
-Version 2 is published in Langfuse under the label `staging`. Production keeps serving
-version 1 until the evaluation is complete and the result is accepted.
+Version 2 was published in Langfuse under the label `staging` and evaluated there, while
+production kept serving version 1. A seventh check, `missing_price_not_shown`, was added
+for change 3; the baseline was re-scored with it from its saved transcripts.
 
-A seventh check, `missing_price_not_shown`, was added for change 3. The baseline was
-re-scored with it from its saved transcripts.
+**Result.** 12 tasks, 3 runs each, both versions.
 
-**Status.** 19 of the 36 runs are complete (all 12 tasks once, 7 of them twice). The
-generation model's free tier allows 200,000 tokens per day, and the day's allowance ran out.
-The remaining 17 runs resume from the saved results when it is available again.
-
-**Partial result,** comparing the 19 completed runs with the same 19 task-and-run slots of
-the baseline:
-
-| Check | Baseline (v1) | Version 2 |
+| Check | Version 1 (baseline) | Version 2 |
 |---|---|---|
-| `memory_write_correct` | 14 of 16 | 16 of 16 |
-| `tools_as_expected` | 11 of 13 | 13 of 13 |
-| `missing_price_not_shown` | 11 of 14 | 11 of 11 |
-| `memory_read_first` | 19 of 19 | 19 of 19 |
-| `prices_grounded` | 14 of 14 | 11 of 11 |
-| `budget_respected` | 3 of 3 | 3 of 3 |
-| `search_uses_memory` | 2 of 2 | 2 of 2 |
-| Runs passing every check | 13 of 19 | 19 of 19 |
+| `memory_write_correct` | 27 of 30 | 30 of 30 |
+| `tools_as_expected` | 25 of 27 | 27 of 27 |
+| `missing_price_not_shown` | 17 of 24 | 21 of 21 |
+| `memory_read_first` | 36 of 36 | 36 of 36 |
+| `prices_grounded` | 25 of 25 | 21 of 21 |
+| `budget_respected` | 6 of 6 | 6 of 6 |
+| `search_uses_memory` | 3 of 3 | 3 of 3 |
 
-| Other measures, same 19 runs | Baseline (v1) | Version 2 |
+| Summary | Version 1 | Version 2 |
 |---|---|---|
-| Catalogue searches made | 15 | 10 |
-| Runs with a search nobody asked for | 5 | 0 |
-| Product replies using the word "rating" | 10 of 14 | 6 of 11 |
+| Tasks passed in all 3 runs, seven checks | 7 of 12 | 12 of 12 |
+| Tasks passed in all 3 runs, original six checks | 9 of 12 | 12 of 12 |
+| Runs passing every check | 26 of 36 (72%) | 36 of 36 (100%) |
 
-**What it shows so far.** The two targeted failures did not occur: no one-off request was
-stored and no unrequested search was made. The tasks that must still store a fact or still
-search kept passing, so the prompt was not over-corrected. Fewer searches means lower cost
-per conversation. The score is still called a "rating" in about half of the product
-replies, so the wording change helped only partly.
+| Behaviour and cost | Version 1 | Version 2 | Change |
+|---|---|---|---|
+| Catalogue searches (each a paid rerank call) | 28 | 20 | -29% |
+| Runs with a search nobody asked for | 6 | 0 | |
+| Tool calls per conversation | 2.64 | 2.22 | -16% |
+| Budget task: request stored as a fact (not graded) | 3 of 3 | 0 of 3 | |
+| Product replies using the word "rating" | 17 of 24 | 11 of 21 | |
 
-**Not yet a conclusion.** This is 19 runs, and consistency across three runs per task is
-exactly what remains to be measured. No decision on promoting version 2 until all 36 are in.
+Five tasks improved and none got worse.
 
-**Finding about the process.** The daily token limit is not reported in the model API's
-response headers, only in the error returned once it is exceeded, so it was not planned for.
-One full agent evaluation uses roughly half a day's allowance. The runner now stops after
-two failed conversations in a row and does not log an incomplete evaluation as a result.
+**Findings.**
+
+1. **Both targeted failures stopped.** No one-off request was stored as a fact and no
+   unrequested search was made, in any of the 36 runs.
+2. **The prompt was not over-corrected.** The tasks that must still store a fact, and the
+   ones that must still search, passed in every run.
+3. **It is cheaper per conversation.** 29% fewer searches for the same tasks.
+4. **The score label is only partly fixed.** About half of product replies still call the
+   recommendation score a "rating", typically as a table column heading. Changing the tool
+   output was not enough.
+5. **The task set is now saturated.** Every check is at 100%, so these 12 tasks can detect a
+   regression but can no longer show an improvement.
+
+**How much to read into it.** The prompt was edited by someone who knew the 12 tasks. The
+new wording quotes none of them, but a task set written first and a fix written second is
+weaker evidence than tasks the fix has never seen. With 12 tasks, "five improved, none
+worsened" is a clear direction, not a statistically proven effect (sign test p = 0.06).
+The honest claim is that these specific observed failures no longer occur.
+
+**Process finding.** The run was interrupted twice by an environment restart and once by the
+generation model's daily token limit (200,000 tokens, reported only in the error once it
+is exceeded). No work was lost: finished runs are saved and the evaluation resumes from
+them. The runner now stops after two failed conversations in a row and does not record an
+incomplete evaluation as a result.
+
+**Cost.** 20 searches, about $0.05 in reranking.
+
+**Decision.** Version 2 promoted to production on 2026-10-12: it fixed the two failures it
+targeted, regressed on nothing measured, and needs fewer paid searches. The "rating" label
+and harder tasks are carried forward as open questions.
 
 ## Open questions
 
+- **Harder agent tasks.** The 12 tasks are saturated. New tasks should come from failures not
+  yet seen: hostile or off-topic input, longer conversations, and requests the catalogue
+  cannot satisfy.
+- **The "rating" label.** Still used in about half of product replies after the tool wording
+  change; it needs a prompt rule or a check of its own.
 - **Local embedding and reranking models.** Both hosted calls could be replaced by models run
   alongside the application, removing the network round trip. Whether that is faster depends
   on the model size and the available hardware, and smaller local models may rank less well.
