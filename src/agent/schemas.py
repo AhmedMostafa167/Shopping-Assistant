@@ -13,13 +13,9 @@ class SearchCatalogInput(BaseModel):
     # The model chooses this. It goes into a SQL LIMIT (negative values are a database
     # error) and sets how many products are sent to the paid rerank call.
     top_k: int = Field(default=5, ge=1, le=20, description="Number of products to return.")
-
-
-class FilterProductsInput(BaseModel):
-    category_name: str
-    min_price: float | None = None
-    max_price: float | None = None
-    min_rating: float | None = None
+    min_price: float | None = Field(default=None, description="Lowest price the user accepts, if they gave one.")
+    max_price: float | None = Field(default=None, description="Highest price the user accepts, if they gave one.")
+    min_rating: float | None = Field(default=None, description="Lowest average rating (0-5) the user accepts, if they gave one.")
 
 
 class ReadMemoryInput(BaseModel):

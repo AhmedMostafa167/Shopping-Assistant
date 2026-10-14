@@ -67,8 +67,9 @@ def tools_as_expected(record: dict, expect: dict) -> bool | None:
     if set(forbidden) & set(called):
         return False
     if limits:
+        # Limits were passed to filter_products until prompt v3, and to search_catalog since.
         return any(_filter_within(call["args"], limits) for call in record["tool_calls"]
-                   if call["name"] == "filter_products")
+                   if call["name"] in ("search_catalog", "filter_products"))
     return True
 
 

@@ -116,7 +116,6 @@ class RecordingChatModel:
 def run_first_turn(prompt_registry, monkeypatch):
     for factory in (
         "make_search_catalog_tool",
-        "make_filter_products_tool",
         "make_read_memory_tool",
         "make_write_memory_tool",
     ):
@@ -124,7 +123,6 @@ def run_first_turn(prompt_registry, monkeypatch):
     chat_model = RecordingChatModel()
     graph = graph_module.build_graph(
         SimpleNamespace(chat_model=chat_model),
-        None,
         None,
         None,
         checkpointer=None,

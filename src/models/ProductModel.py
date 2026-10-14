@@ -85,21 +85,26 @@ class ProductModel(BaseDataModel):
             result = await session.execute(query)
             return result.scalar_one()
 
-    async def filter_products(self, category_name: str, min_price: float = None, max_price: float = None,
-                               min_rating: float = None, top_k: int = 10):
-        async with self.db_client() as session:
-            query = select(Product).where(Product.category_name == category_name)
-            if min_price is not None:
-                query = query.where(Product.price >= min_price)
-            if max_price is not None:
-                query = query.where(Product.price <= max_price)
-            if min_rating is not None:
-                query = query.where(Product.average_rating >= min_rating)
-            query = query.limit(top_k)
-            result = await session.execute(query)
-            return result.scalars().all()
+    @staticmethod
+    def limit_conditions(limits: dict | None) -> list:
+        """SQL conditions for optional min_price, max_price and min_rating limits.
 
-    async def keyword_search(self, query: str, top_k: int = 10):
+        A product without a price never satisfies a price limit. Postgres sorts NaN above
+        every number, so NaN prices are excluded explicitly.
+        """
+        limits = limits or {}
+        conditions = []
+        if limits.get("min_price") is not None or limits.get("max_price") is not None:
+            conditions.append(Product.price != float("nan"))
+        if limits.get("min_price") is not None:
+            conditions.append(Product.price >= limits["min_price"])
+        if limits.get("max_price") is not None:
+            conditions.append(Product.price <= limits["max_price"])
+        if limits.get("min_rating") is not None:
+            conditions.append(Product.average_rating >= limits["min_rating"])
+        return conditions
+
+    async def keyword_search(self, query: str, top_k: int = 10, limits: dict | None = None):
         async with self.db_client() as session:
             ts_query = func.plainto_tsquery("english", query)
 
@@ -108,7 +113,7 @@ class ProductModel(BaseDataModel):
                     Product.product_id,
                     func.ts_rank(Product.search_vector, ts_query).label("score")
                 )
-                .where(Product.search_vector.op("@@")(ts_query))
+                .where(Product.search_vector.op("@@")(ts_query), *self.limit_conditions(limits))
                 .order_by(desc("score"))
                 .limit(top_k)
             )

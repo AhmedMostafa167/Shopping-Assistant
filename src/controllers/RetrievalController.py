@@ -29,26 +29,27 @@ class RetrievalController(BaseController):
         controller.product_model = await ProductModel.create_instance(db_client=db_client)
         return controller
 
-    async def keyword_search(self, query: str, top_k: int = 10):
+    async def keyword_search(self, query: str, top_k: int = 10, limits: dict | None = None):
         with get_client().start_as_current_observation(
             as_type="retriever",
             name="keyword-search",
-            input={"query": query, "top_k": top_k},
+            input={"query": query, "top_k": top_k, "limits": limits},
         ) as observation:
-            products = await self.product_model.keyword_search(query, top_k)
+            products = await self.product_model.keyword_search(query, top_k, limits)
             products = sorted(products, key=lambda x: x.score, reverse=True)
             observation.update(output=scored_ids(products))
 
             return products
 
     async def vector_search(self, query: str, top_k: int = 10,
-                             category_name: str = DataBaseEnums.DEFAULT_CATEGORY_NAME.value):
+                             category_name: str = DataBaseEnums.DEFAULT_CATEGORY_NAME.value,
+                             limits: dict | None = None):
 
         langfuse = get_client()
         with langfuse.start_as_current_observation(
             as_type="retriever",
             name="vector-search",
-            input={"query": query, "top_k": top_k, "category_name": category_name},
+            input={"query": query, "top_k": top_k, "category_name": category_name, "limits": limits},
         ) as observation:
             with langfuse.start_as_current_observation(
                 as_type="embedding",
@@ -69,6 +70,7 @@ class RetrievalController(BaseController):
                 vector=query_embedding[0],
                 limit=top_k,
                 category_name=category_name,
+                limits=limits,
             )
             products = sorted(products, key=lambda x: x.score, reverse=True)
             observation.update(output=scored_ids(products))
@@ -113,19 +115,21 @@ class RetrievalController(BaseController):
 
     async def hybrid_search(self, query: str, top_k: int = 10,
                              category_name: str = DataBaseEnums.DEFAULT_CATEGORY_NAME.value,
-                             rerank: bool = True):
+                             rerank: bool = True, limits: dict | None = None):
         """Vector and keyword search fused, then reranked.
 
-        rerank=False returns the fused order as is; evaluation uses it to measure what
-        the paid rerank step adds.
+        limits (min_price, max_price, min_rating) are applied inside both searches, so only
+        products within them are ranked. rerank=False returns the fused order as is;
+        evaluation uses it to measure what the paid rerank step adds.
         """
         with get_client().start_as_current_observation(
             as_type="retriever",
             name="hybrid-search",
-            input={"query": query, "top_k": top_k, "category_name": category_name, "rerank": rerank},
+            input={"query": query, "top_k": top_k, "category_name": category_name, "rerank": rerank,
+                   "limits": limits},
         ) as observation:
-            vector_results = await self.vector_search(query, top_k, category_name)
-            keyword_results = await self.keyword_search(query, top_k)
+            vector_results = await self.vector_search(query, top_k, category_name, limits)
+            keyword_results = await self.keyword_search(query, top_k, limits)
 
             fused = self.reranking(vector_results, keyword_results)
             fused_ids = [pid for pid, _ in fused][:top_k]

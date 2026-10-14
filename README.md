@@ -145,7 +145,7 @@ sequenceDiagram
     T->>DB: Customer's stored facts
     A->>T: write_memory, when the customer states a lasting preference
     T->>T: Memory-write guardrail
-    A->>T: search_catalog or filter_products
+    A->>T: search_catalog, with price and rating limits if given
     T->>DB: Hybrid search, then rerank
     A-->>API: Reply grounded in the tool results
     API-->>C: Reply and trace_id
@@ -179,16 +179,15 @@ Keyword search finds exact model names and brands; vector search finds products 
 
 Results from 2026-10-11 with 95% confidence intervals. Reranking is billed per search, so it was measured on a fixed 40-query subset; on those 40 queries plain hybrid search scores 23% first and 50% in the top 3. Almost all of the search time is the embedding API call; the indexed database lookup takes about 3 ms.
 
-Explicit numeric limits ("under $10, rated above 4.5") go to a separate `filter_products` tool that queries price and rating directly.
+Price and rating limits ("a case under $15, rated above 4.5") are applied inside both searches, before ranking, so only products within them are ranked; pgvector's iterative index scan keeps a filtered vector search returning a full set of results. An earlier design sent limits to a separate filter tool with no search query, which returned any products under the price, relevant or not; the demo exposed it and [entry 8 of the improvement log](eval/IMPROVEMENT_LOG.md) measures the fix.
 
 ## Agent and long-term memory
 
-The agent is a LangGraph graph with four tools:
+The agent is a LangGraph graph with three tools:
 
 | Tool | Purpose |
 | --- | --- |
-| `search_catalog` | Hybrid search with reranking. |
-| `filter_products` | Exact price and rating filters. |
+| `search_catalog` | Hybrid search with reranking, optionally within price and rating limits. |
 | `read_memory` | The customer's stored facts, highest confidence first. |
 | `write_memory` | Add a fact, or modify an existing one by its ID instead of adding a duplicate. |
 
@@ -245,7 +244,7 @@ Two evaluations, both repeatable from the command line and recorded in MLflow an
 | --- | --- |
 | `memory_read_first` | A conversation starts by reading the customer's stored facts. |
 | `memory_write_correct` | The memory table holds exactly what it should afterwards. |
-| `tools_as_expected` | Required tools were used, forbidden ones were not, filters carry the stated limits. |
+| `tools_as_expected` | Required tools were used, forbidden ones were not, and the search carries the stated price and rating limits. |
 | `budget_respected` | No price in the reply is above the customer's limit. |
 | `prices_grounded` | Every price stated came from a tool result or from the customer. |
 | `search_uses_memory` | A search uses the stored fact it should, such as the customer's phone model. |

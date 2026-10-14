@@ -20,14 +20,14 @@ class FakeEmbeddingClient:
 class FakeVectorDB:
     default_vector_size = 3
 
-    async def search_by_vector(self, *, table_name, vector, limit, category_name):
+    async def search_by_vector(self, *, table_name, vector, limit, category_name, limits=None):
         assert table_name == "table_3_electronics"
         assert category_name == "electronics"
         return [SimpleNamespace(product_id=101, score=0.99)]
 
 
 class FakeProductModel:
-    async def keyword_search(self, query, top_k):
+    async def keyword_search(self, query, top_k, limits=None):
         assert query == "wireless noise cancelling headphones"
         assert top_k == 5
         return [SimpleNamespace(product_id=101, score=1.0)]

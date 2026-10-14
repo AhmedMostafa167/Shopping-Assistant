@@ -174,26 +174,42 @@ class PGVectorProvider(VectorDBInterface):
                     await session.execute(batch_insert_sql, values)
         return True
     
-    async def search_by_vector(self, table_name: str, vector: list, limit: int, category_name: str) -> List[VectorSearchResult]:
+    async def search_by_vector(self, table_name: str, vector: list, limit: int, category_name: str,
+                               limits: dict | None = None) -> List[VectorSearchResult]:
         is_table_existed = await self.is_table_existed(table_name)
         if not is_table_existed:
             self.logger.warning("vector_table_not_found", table_name=table_name)
             return []
         
         vector = "[" + ",".join([ str(v) for v in vector ]) + "]"
+        limits = {name: value for name, value in (limits or {}).items() if value is not None}
+        limit_sql = ""
+        if "min_price" in limits or "max_price" in limits:
+            limit_sql += " AND products.price <> 'NaN'"
+        if "min_price" in limits:
+            limit_sql += " AND products.price >= :min_price"
+        if "max_price" in limits:
+            limit_sql += " AND products.price <= :max_price"
+        if "min_rating" in limits:
+            limit_sql += " AND products.average_rating >= :min_rating"
         async with self.db_client() as session:
             async with session.begin():
+                if limits:
+                    # Without this, the index returns its nearest candidates first and the
+                    # limits then discard most of them, leaving fewer results than asked for.
+                    await session.execute(sql_text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
                 # Ordering by the distance itself (ascending) is what lets Postgres use
                 # the vector index; ordering by a derived score would force a full scan.
                 search_sql = sql_text(f'SELECT {PGVectorTableSchemaEnums.PRODUCT_ID.value} as product_id, {PGVectorTableSchemaEnums.VECTOR.value} <=> :vector as distance'
                                         f' FROM {table_name}'
                                         f' JOIN products USING ({PGVectorTableSchemaEnums.PRODUCT_ID.value})'
-                                        f' WHERE products.category_name = :category_name'
+                                        f' WHERE products.category_name = :category_name{limit_sql}'
                                         ' ORDER BY distance'
                                         f' LIMIT {limit}')
                 results = await session.execute(search_sql, {
-                                                             "category_name": category_name, 
-                                                             "vector": vector
+                                                             "category_name": category_name,
+                                                             "vector": vector,
+                                                             **limits,
                                                             }
                                                 )
                 records = results.mappings().fetchall()

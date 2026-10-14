@@ -148,7 +148,6 @@ async def lifespan(app: FastAPI):
         app.graph = build_graph(
             llm_provider=app.llm_client,
             retrieval_controller=app.retrieval_controller,
-            product_model=app.product_model,
             memory_controller=app.memory_controller,
             checkpointer=app.checkpointer,
             prompt_registry=prompt_registry,

@@ -47,6 +47,7 @@ class VectorDBInterface(ABC):
         pass
 
     @abstractmethod
-    def search_by_vector(self, table_name: str, vector: list, limit: int) -> List[RetreivedProduct]:
+    def search_by_vector(self, table_name: str, vector: list, limit: int, category_name: str,
+                         limits: dict | None = None) -> List[RetreivedProduct]:
         pass
     

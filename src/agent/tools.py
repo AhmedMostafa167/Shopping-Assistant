@@ -7,7 +7,6 @@ from structlog import get_logger
 from helpers.tracing import record_guardrail
 from .guardrails import MAX_FACTS_PER_USER, instruction_in_fact
 from .schemas import (
-    FilterProductsInput,
     ReadMemoryInput,
     SearchCatalogInput,
     WriteMemoryInput,
@@ -47,13 +46,22 @@ def product_card(product) -> dict:
 # text, so product images and prices reach the user without passing through the model.
 def make_search_catalog_tool(retrieval_controller):
     @tool("search_catalog", args_schema=SearchCatalogInput, response_format="content_and_artifact")
-    async def search_catalog(query: str, category_name: str, top_k: int = 5) -> str:
-        """Search the product catalog semantically and by keyword."""
+    async def search_catalog(
+        query: str,
+        category_name: str,
+        top_k: int = 5,
+        min_price: float | None = None,
+        max_price: float | None = None,
+        min_rating: float | None = None,
+    ) -> str:
+        """Search the product catalog by meaning and keyword, optionally within price and rating limits."""
         query = query.strip()
         if not query:
             return "No valid product search query was provided.", []
 
-        products = await retrieval_controller.hybrid_search(query, top_k, category_name)
+        limits = {"min_price": min_price, "max_price": max_price, "min_rating": min_rating}
+        limits = {name: value for name, value in limits.items() if value is not None} or None
+        products = await retrieval_controller.hybrid_search(query, top_k, category_name, limits=limits)
         logger.info("catalog_search_completed", query=query, result_count=len(products))
         if not products:
             return "No matching products found.", []
@@ -65,38 +73,6 @@ def make_search_catalog_tool(retrieval_controller):
         return text, [product_card(p) for p in products]
 
     return search_catalog
-
-
-def make_filter_products_tool(product_model):
-    @tool("filter_products", args_schema=FilterProductsInput, response_format="content_and_artifact")
-    async def filter_products(
-        category_name: str,
-        min_price: float = None,
-        max_price: float = None,
-        min_rating: float = None,
-    ) -> str:
-        """Filter products by explicit price and rating constraints."""
-        products = await product_model.filter_products(
-            category_name=category_name,
-            min_price=min_price,
-            max_price=max_price,
-            min_rating=min_rating,
-        )
-        logger.info(
-            "catalog_filter_completed",
-            category_name=category_name,
-            result_count=len(products),
-        )
-        if not products:
-            return "No products matched those filters.", []
-        text = "\n".join(
-            f"- {p.title} ({format_price(p)}, {format_recommendation_score(p)}) "
-            f"[Image URL: {p.image}]"
-            for p in products
-        )
-        return text, [product_card(p) for p in products]
-
-    return filter_products
 
 
 def make_read_memory_tool(memory_controller):

@@ -223,6 +223,7 @@
       "expect": {
         "tools_required": [
           [
+            "search_catalog",
             "filter_products"
           ]
         ],

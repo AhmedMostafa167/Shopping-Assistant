@@ -114,8 +114,9 @@ class FakeRetrievalController:
         self.calls = []
         self.products = list(products)
 
-    async def hybrid_search(self, query, top_k, category_name):
+    async def hybrid_search(self, query, top_k, category_name, limits=None):
         self.calls.append(top_k)
+        self.limits = limits
         return self.products
 
 
@@ -175,3 +176,12 @@ def test_search_results_reach_the_client_as_cards_the_model_never_sees():
     assert "Black stand (price not listed" in message.content
     assert message.artifact == [{"product_id": 7, "title": "Black stand", "price": None,
                                  "recommendation_score": 4.2, "image": "https://img.example/7.jpg"}]
+
+
+def test_price_and_rating_limits_reach_the_search_and_absent_ones_are_left_out():
+    retrieval = FakeRetrievalController()
+    tool = make_search_catalog_tool(retrieval)
+    asyncio.run(tool.ainvoke({"query": "phone case", "category_name": "electronics_cellphones", "max_price": 15}))
+    assert retrieval.limits == {"max_price": 15}
+    asyncio.run(tool.ainvoke({"query": "phone case", "category_name": "electronics_cellphones"}))
+    assert retrieval.limits is None

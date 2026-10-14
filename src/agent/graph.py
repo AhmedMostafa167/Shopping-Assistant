@@ -14,7 +14,6 @@ from .prompts import (
 )
 from .state import AgentState
 from .tools import (
-    make_filter_products_tool,
     make_read_memory_tool,
     make_search_catalog_tool,
     make_write_memory_tool,
@@ -24,7 +23,6 @@ from .tools import (
 def build_graph(
     llm_provider,
     retrieval_controller,
-    product_model,
     memory_controller,
     *,
     checkpointer: BaseCheckpointSaver,
@@ -34,7 +32,6 @@ def build_graph(
     """Build the graph using an application-owned checkpointer."""
     tools = [
         make_search_catalog_tool(retrieval_controller),
-        make_filter_products_tool(product_model),
         make_read_memory_tool(memory_controller),
         make_write_memory_tool(memory_controller),
     ]
