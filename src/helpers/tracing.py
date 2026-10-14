@@ -1,4 +1,4 @@
-from langfuse import Langfuse
+from langfuse import Langfuse, get_client
 from langfuse.span_filter import is_default_export_span
 
 from .config import Settings
@@ -27,3 +27,22 @@ def configure_tracing(settings: Settings) -> Langfuse:
         release=settings.APP_VERSION,
         should_export_span=should_export_span,
     )
+
+
+def record_guardrail(name: str, *, input, blocked_reason: str | None) -> None:
+    """Record one guardrail decision in the current trace, with a pass/fail score."""
+    with get_client().start_as_current_observation(
+        as_type="guardrail",
+        name=name,
+        input=input,
+        output={"allowed": blocked_reason is None, "reason": blocked_reason},
+        level="WARNING" if blocked_reason else "DEFAULT",
+        status_message=blocked_reason,
+    ) as guardrail:
+        # A score per decision, so the block rate of each guardrail can be charted.
+        guardrail.score(
+            name=f"{name.replace('-', '_')}_passed",
+            value=0 if blocked_reason else 1,
+            data_type="BOOLEAN",
+            comment=blocked_reason,
+        )

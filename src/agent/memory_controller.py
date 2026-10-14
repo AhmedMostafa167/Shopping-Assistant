@@ -2,6 +2,8 @@
 
 from models.db_schemes import Memory
 
+from .guardrails import MAX_FACTS_PER_USER
+
 
 class MemoryController:
     def __init__(self, memory_model, profile_model):
@@ -14,8 +16,14 @@ class MemoryController:
             return []
         return await self.memory_model.get_memories_by_profile(
             profile.profile_id,
-            limit=50,
+            limit=MAX_FACTS_PER_USER,
         )
+
+    async def count_facts(self, username: str) -> int:
+        profile = await self.profile_model.get_profile_by_username(username)
+        if profile is None:
+            return 0
+        return await self.memory_model.count_memories_by_profile(profile.profile_id)
 
     async def add_fact(
         self,

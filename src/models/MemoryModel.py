@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from .BaseDataModel import BaseDataModel
 from .db_schemes import Memory
@@ -37,6 +37,12 @@ class MemoryModel(BaseDataModel):
         async with self.db_client() as session:
             result = await session.execute(query)
             return list(result.scalars().all())
+
+    async def count_memories_by_profile(self, profile_id: int) -> int:
+        query = select(func.count()).select_from(Memory).where(Memory.profile_id == profile_id)
+        async with self.db_client() as session:
+            result = await session.execute(query)
+            return result.scalar_one()
 
     async def update_memory(
         self,

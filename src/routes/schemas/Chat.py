@@ -2,11 +2,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+# The whole conversation is re-sent to the model on every call and kept for later turns,
+# so one huge message is paid for again on every turn and can exceed the provider's
+# per-request token limit, after which the conversation can never be answered again.
+MAX_MESSAGE_CHARACTERS = 2000
+
 
 class ChatRequest(BaseModel):
     username: str = Field(min_length=1, max_length=255)
     conversation_id: UUID
-    message: str = Field(min_length=1)
+    message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARACTERS)
 
 
 class ChatResponse(BaseModel):

@@ -4,6 +4,8 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from structlog import get_logger
 
+from helpers.tracing import record_guardrail
+from .guardrails import MAX_FACTS_PER_USER, instruction_in_fact
 from .schemas import (
     FilterProductsInput,
     ReadMemoryInput,
@@ -118,6 +120,22 @@ def make_write_memory_tool(memory_controller):
             return "A fact_id is required when operation is modify."
         if operation == "add" and fact_id is not None:
             return "fact_id must be omitted when operation is add."
+
+        blocked_reason = instruction_in_fact(fact)
+        if (blocked_reason is None and operation == "add"
+                and await memory_controller.count_facts(username) >= MAX_FACTS_PER_USER):
+            blocked_reason = f"the user already has {MAX_FACTS_PER_USER} stored facts"
+        record_guardrail(
+            "memory-write-guard",
+            input={"operation": operation, "fact": fact},
+            blocked_reason=blocked_reason,
+        )
+        if blocked_reason:
+            logger.warning("fact_blocked", username=username, reason=blocked_reason)
+            return (
+                f"Not stored: {blocked_reason}. Only facts that describe the user are stored; "
+                "to change a fact the user already has, modify it instead."
+            )
 
         if operation == "add":
             stored = await memory_controller.add_fact(

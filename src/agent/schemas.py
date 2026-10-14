@@ -2,13 +2,17 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .guardrails import MAX_FACT_CHARACTERS
+
 
 class SearchCatalogInput(BaseModel):
     query: str = Field(description="The user's product search intent, in English.")
     category_name: str = Field(
         description="Category to search within, e.g. 'electronics_cellphones'."
     )
-    top_k: int = Field(default=5, description="Number of products to return.")
+    # The model chooses this. It goes into a SQL LIMIT (negative values are a database
+    # error) and sets how many products are sent to the paid rerank call.
+    top_k: int = Field(default=5, ge=1, le=20, description="Number of products to return.")
 
 
 class FilterProductsInput(BaseModel):
@@ -28,6 +32,7 @@ class WriteMemoryInput(BaseModel):
     )
     fact: str = Field(
         min_length=1,
+        max_length=MAX_FACT_CHARACTERS,
         description="A concise, standalone fact about the user."
     )
     fact_type: Literal["preference", "constraint", "history"] = Field(
