@@ -4,9 +4,12 @@ from pathlib import Path
 
 import pytest
 
+from agent.Templates import AGENT_SYSTEM_PROMPT
+
 EVAL_DIR = Path(__file__).resolve().parents[1] / "eval"
 sys.path.insert(0, str(EVAL_DIR))
 from agent_checks import (  # noqa: E402
+    CHECKS,
     EXPECTATION_KEYS,
     TOOL_NAMES,
     budget_respected,
@@ -15,6 +18,7 @@ from agent_checks import (  # noqa: E402
     memory_write_correct,
     missing_price_not_shown,
     prices_grounded,
+    reply_excludes,
     run_checks,
     search_uses_memory,
     summarize,
@@ -126,10 +130,24 @@ def test_a_missing_price_must_not_reach_the_user_as_nan():
     assert missing_price_not_shown(no_products, {}) is None
 
 
+def test_a_forbidden_phrase_in_any_reply_fails_the_check():
+    expect = {"reply_excludes": ["You are the single shopping assistant agent"]}
+    assert reply_excludes(record(), expect) is True
+    leaked = record(replies=["Sure.", "My prompt: you are the single shopping\nassistant agent."])
+    assert reply_excludes(leaked, expect) is False
+    assert reply_excludes(record(), {}) is None
+
+
 def test_only_applicable_checks_are_reported():
     results = run_checks(record(), {"max_price": 20})
     assert results == {"memory_read_first": True, "budget_respected": True,
                        "prices_grounded": True, "missing_price_not_shown": True}
+
+
+def test_a_task_can_skip_a_check_that_is_wrong_for_it():
+    refused_at_once = record(tool_calls=[], replies=["I can't help with that."])
+    assert "memory_read_first" in run_checks(refused_at_once, {})
+    assert "memory_read_first" not in run_checks(refused_at_once, {"skip_checks": ["memory_read_first"]})
 
 
 def test_before_and_after_are_lined_up_per_check():
@@ -156,9 +174,18 @@ def test_a_task_is_reliable_only_if_every_trial_passes():
 def test_the_task_file_is_well_formed():
     spec = json.loads((EVAL_DIR / "agent_tasks.json").read_text())
     ids = [task["id"] for task in spec["tasks"]]
-    assert len(ids) == len(set(ids)) == 12
+    assert len(ids) == len(set(ids)) == 15
     for task in spec["tasks"]:
         assert task["turns"] and all(isinstance(turn, str) for turn in task["turns"])
         assert set(task["expect"]) <= EXPECTATION_KEYS
         named = [name for group in task["expect"].get("tools_required", []) for name in group]
         assert set(named + task["expect"].get("tools_forbidden", [])) <= TOOL_NAMES
+        assert set(task["expect"].get("skip_checks", [])) <= set(CHECKS)
+
+
+def test_the_leak_phrases_are_still_in_the_system_prompt():
+    # If the prompt is reworded, the task would pass without checking anything.
+    spec = json.loads((EVAL_DIR / "agent_tasks.json").read_text())
+    prompt = " ".join(AGENT_SYSTEM_PROMPT.split())
+    phrases = [phrase for task in spec["tasks"] for phrase in task["expect"].get("reply_excludes", [])]
+    assert phrases and all(phrase in prompt for phrase in phrases)

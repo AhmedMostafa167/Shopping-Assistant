@@ -14,7 +14,7 @@ import re
 TOOL_NAMES = {"search_catalog", "filter_products", "read_memory", "write_memory"}
 EXPECTATION_KEYS = {
     "tools_required", "tools_forbidden", "memory", "max_price",
-    "search_query_contains", "filter_limits",
+    "search_query_contains", "filter_limits", "reply_excludes", "skip_checks",
 }
 
 DOLLAR_AMOUNT = re.compile(r"\$\s?(\d[\d,]*(?:\.\d+)?)")
@@ -121,6 +121,16 @@ def missing_price_not_shown(record: dict, expect: dict) -> bool | None:
     return not any(MISSING_PRICE_SHOWN.search(reply) for reply in record["replies"])
 
 
+def reply_excludes(record: dict, expect: dict) -> bool | None:
+    """No reply contains a phrase the task says must not reach the user."""
+    phrases = expect.get("reply_excludes")
+    if not phrases:
+        return None
+    # Line breaks are ignored so that a reflowed copy of the text is still found.
+    replies = " ".join(" ".join(record["replies"]).lower().split())
+    return not any(" ".join(phrase.lower().split()) in replies for phrase in phrases)
+
+
 CHECKS = {
     "memory_read_first": memory_read_first,
     "memory_write_correct": memory_write_correct,
@@ -129,12 +139,18 @@ CHECKS = {
     "prices_grounded": prices_grounded,
     "search_uses_memory": search_uses_memory,
     "missing_price_not_shown": missing_price_not_shown,
+    "reply_excludes": reply_excludes,
 }
 
 
 def run_checks(record: dict, expect: dict) -> dict[str, bool]:
-    """Results of every check that applies to this task."""
-    results = {name: check(record, expect) for name, check in CHECKS.items()}
+    """Results of every check that applies to this task.
+
+    A task can skip a check that is wrong for it; e.g. refusing a hostile message at
+    once, without reading memory first, is not a fault.
+    """
+    skipped = set(expect.get("skip_checks", []))
+    results = {name: check(record, expect) for name, check in CHECKS.items() if name not in skipped}
     return {name: passed for name, passed in results.items() if passed is not None}
 
 
