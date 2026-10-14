@@ -187,8 +187,12 @@ If you see connection errors when starting the services:
    while the database is reachable from the Codespace itself on `localhost:5432`.
 
    A Codespace shares its host's firewall, which has an older rule set that drops traffic between
-   containers on a Compose network. Credentials and subnets are not the cause. Allow that traffic:
+   containers on a Compose network, and from containers to the internet (the API then cannot
+   reach Groq, Cohere or Langfuse; DNS lookups fail). Credentials and subnets are not the cause.
+   Allow both:
    ```bash
    sudo iptables-legacy -I DOCKER-USER -i br-+ -o br-+ -j ACCEPT
+   sudo iptables-legacy -I DOCKER-USER -i br-+ ! -o br-+ -j ACCEPT
+   sudo iptables-legacy -I DOCKER-USER -o br-+ -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
    ```
-   The rule is lost when the Codespace stops, so run it again after each start.
+   The rules are lost when the Codespace stops, so run them again after each start.

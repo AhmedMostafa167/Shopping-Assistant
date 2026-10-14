@@ -15,6 +15,8 @@ COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src /app/
 
 ENV PATH="/app/.venv/bin:$PATH"
+# Uvicorn runs several workers; Prometheus metrics are aggregated across them.
+ENV PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus-metrics
 
 RUN mkdir -p /models/db_schemes/shopping_assistant
 COPY docker/shopping_assistant/alembic.ini models/db_schemes/shopping_assistant/alembic.ini

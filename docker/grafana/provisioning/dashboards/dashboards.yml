@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: Shopping Assistant
+    folder: Shopping Assistant
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

@@ -20,7 +20,7 @@
 
 A conversational shopping assistant for e-commerce catalogues. A customer describes what they want in plain language; an agent searches the store's catalogue with hybrid semantic and keyword search, respects their budget, remembers their lasting preferences across conversations, and answers only with products and prices that exist in the catalogue.
 
-Behind the agent is a production-style backend: a layered, provider-agnostic FastAPI service on PostgreSQL and pgvector, with full LLM tracing, prompt management without redeploys, user feedback, code-graded evaluation of retrieval and agent behaviour, and run-time guardrails. Every improvement was measured before and after, and recorded in the [improvement log](eval/IMPROVEMENT_LOG.md).
+Behind the agent is a production-style backend: a layered, provider-agnostic FastAPI service on PostgreSQL and pgvector, with full LLM tracing, prompt management without redeploys, user feedback, service monitoring with Prometheus and Grafana, code-graded evaluation of retrieval and agent behaviour, and run-time guardrails. Every improvement was measured before and after, and recorded in the [improvement log](eval/IMPROVEMENT_LOG.md).
 
 ## Highlights
 
@@ -30,6 +30,7 @@ Behind the agent is a production-style backend: a layered, provider-agnostic Fas
 | Search speed | Whole 12,730-product catalogue embedded and indexed with HNSW | Median vector search **35 ms → 3.1 ms**, 99.7% of exact top-10 results kept |
 | Agent quality | Prompt v2 evaluated as a candidate in Langfuse before promotion | Tasks passed in all 3 runs: **7 → 12 of 12**, with **29% fewer** paid searches |
 | Guardrails | Input limits and a memory-write guard, tested with hostile tasks, every decision traced in Langfuse | **0 of 21** legitimate facts refused, system prompt leaked in **0** runs; reworded instructions still get past the pattern filter (1 of 4 blocked), so the next step is measured |
+| Monitoring | Prometheus metrics from the API, PostgreSQL and the host, with a provisioned Grafana dashboard | Traffic, chat latency p50/p95, error rate, database and host health on one screen at startup |
 | Engineering | Typed layers, provider factories, migrations, resumable jobs, CI | 104 automated tests, run on every push |
 
 An example turn, copied from an evaluation run (prompt v2):
@@ -230,9 +231,20 @@ uv run python scripts/seed_langfuse_prompts.py
 
 `POST /api/v1/chat/feedback` records a customer's rating of a reply as a `response_rating` score on that reply's trace, so poorly rated answers can be found and inspected.
 
-### Service metrics
+### Service monitoring with Prometheus and Grafana
 
-FastAPI exposes Prometheus metrics at `/metrics`: request count and latency by method, route and status code. The Docker Compose stack runs Prometheus, Grafana, Node Exporter and PostgreSQL Exporter alongside the API.
+Langfuse shows what the agent did; Prometheus and Grafana show how the service is doing. FastAPI exposes request count and latency at `/metrics`, labelled by method, route template and status code. The API runs several Uvicorn workers, so metrics use the Prometheus client's multiprocess mode and every scrape reports all workers together. The Docker Compose stack runs Prometheus, Grafana, Node Exporter and PostgreSQL Exporter alongside the API.
+
+Grafana starts with the Prometheus data source and a **Shopping Assistant: API and infrastructure** dashboard already provisioned (`docker/grafana/`):
+
+| Panel | What it answers |
+| --- | --- |
+| API up, Database up | Is the service reachable and is PostgreSQL up? |
+| Requests per second, by route and by status code | How much traffic, where, and how much of it fails? |
+| Chat latency p50 and p95 | How long a customer waits for a reply, model and search included. |
+| Server error rate | Share of requests answered with a 5xx error. |
+| Latency by route (p95) | Which endpoint is slow. |
+| Database connections, host CPU and memory | Is the infrastructure under strain? |
 
 Tracing is off by default. Set `LANGFUSE_TRACING_ENABLED=true` with the Langfuse keys (see `.env.example`); the application refuses to start if tracing is enabled without keys. With tracing on, user messages, replies, tool results and stored facts are sent to Langfuse.
 
@@ -322,6 +334,7 @@ What is deliberately not covered yet is listed in [Roadmap and future work](#roa
 - **Resumable long jobs.** Catalogue embedding works in saved batches of 96, so an interrupted run loses at most one batch and the next call continues. Evaluations resume from saved runs.
 - **Rate-limit handling.** The Cohere embedding client respects the 96-inputs-per-request and 2,000-inputs-per-minute limits, retries `429` responses and honours `Retry-After`.
 - **Structured logging.** Events are logged as key-value records with `structlog`.
+- **Monitoring.** Prometheus scrapes the API, PostgreSQL and the host; a provisioned Grafana dashboard shows traffic, latency, errors and resource use.
 - **Tests and CI.** 104 tests run with fakes for every external service, so no API key or database is needed. They cover hybrid retrieval and rank fusion, reranking and embedding rate limits, embedding and indexing, the chat and feedback routes, prompt loading, publishing and promotion, tracing, the evaluation checks and metrics, and the guardrails. GitHub Actions runs a lint step for syntax errors, undefined names and unused variables, then the full test suite, on every push and pull request to `main`.
 
 ```bash
