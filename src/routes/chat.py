@@ -43,6 +43,24 @@ async def get_conversation_for_user(request: Request, username: str, conversatio
     return profile, conversation
 
 
+def products_from_turn(messages) -> list[dict]:
+    """Product cards from the tool results after the latest user message, without repeats."""
+    turn = []
+    for message in reversed(messages):
+        if getattr(message, "type", None) == "human":
+            break
+        turn.append(message)
+    cards, seen = [], set()
+    for message in reversed(turn):
+        if getattr(message, "type", None) != "tool":
+            continue
+        for card in getattr(message, "artifact", None) or []:
+            if card["product_id"] not in seen:
+                seen.add(card["product_id"])
+                cards.append(card)
+    return cards
+
+
 @chat_router.post("", response_model=ChatResponse)
 async def chat(request: Request, body: ChatRequest):
     logger.info(
@@ -104,6 +122,7 @@ async def chat(request: Request, body: ChatRequest):
             )
 
         response = result["messages"][-1].content
+        products = products_from_turn(result["messages"])
         chat_turn.update(output=response)
         trace_id = langfuse.get_current_trace_id()
 
@@ -116,6 +135,7 @@ async def chat(request: Request, body: ChatRequest):
         conversation_id=conversation.conversation_uuid,
         response=response,
         trace_id=trace_id,
+        products=products,
     )
 
 

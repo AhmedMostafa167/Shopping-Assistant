@@ -5,12 +5,13 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langfuse.langchain import CallbackHandler
 
 from helpers.config import Settings
 from helpers.tracing import configure_tracing
 from routes import chat as chat_module
-from routes.chat import chat, chat_feedback
+from routes.chat import chat, chat_feedback, products_from_turn
 from routes.schemas.Chat import ChatRequest, FeedbackRequest
 
 
@@ -92,6 +93,29 @@ def test_chat_still_returns_500_when_the_agent_fails():
         asyncio.run(chat(make_request(graph, conversation_uuid), body))
 
     assert raised.value.status_code == 500
+
+
+def card(product_id):
+    return {"product_id": product_id, "title": f"Product {product_id}", "price": 9.99,
+            "recommendation_score": 4.0, "image": f"https://img.example/{product_id}.jpg"}
+
+
+def tool_result(*product_ids):
+    return ToolMessage(content="- products", tool_call_id="call", artifact=[card(i) for i in product_ids])
+
+
+def test_only_this_turns_products_are_returned_once_each_in_order():
+    messages = [
+        HumanMessage("a stand"), tool_result(1, 2), AIMessage("Here are stands."),
+        HumanMessage("cheaper ones"), tool_result(3, 4), tool_result(4, 5), AIMessage("Here you go."),
+    ]
+    assert [c["product_id"] for c in products_from_turn(messages)] == [3, 4, 5]
+
+
+def test_a_turn_without_a_search_returns_no_products():
+    messages = [HumanMessage("a stand"), tool_result(1), AIMessage("Here."), HumanMessage("thanks"),
+                ToolMessage(content="No stored facts.", tool_call_id="m"), AIMessage("You're welcome.")]
+    assert products_from_turn(messages) == []
 
 
 TRACE_ID = "8c6730e0bc7ed25b5a669367fbf4478e"

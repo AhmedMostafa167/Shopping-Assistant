@@ -14,10 +14,20 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARACTERS)
 
 
+class ProductCard(BaseModel):
+    product_id: int
+    title: str
+    price: float | None = None
+    recommendation_score: float | None = None
+    image: str | None = None
+
+
 class ChatResponse(BaseModel):
     conversation_id: UUID
     response: str
     trace_id: str | None = None
+    # Products the agent's tools returned in this turn, for the client to show as cards.
+    products: list[ProductCard] = []
 
 
 class FeedbackRequest(BaseModel):

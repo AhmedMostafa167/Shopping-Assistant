@@ -14,7 +14,7 @@ from helpers.logging import configure_logging, get_logger
 from helpers.tracing import configure_tracing
 from models import MemoryModel, ProductModel, ProfileModel,ConversationModel
 from models.enums import LogEventEnums
-from routes import base, chat, data, conversations
+from routes import base, chat, data, conversations, profiles
 from stores.llm.LLMProviderFactory import LLMProviderFactory
 from stores.vectordb.VectorDBProviderFactory import VectorDBProviderFactory
 from utils.metrics import setup_metrics
@@ -173,3 +173,4 @@ app.include_router(base.base_router)
 app.include_router(data.data_router)
 app.include_router(chat.chat_router)
 app.include_router(conversations.conversation_router)
+app.include_router(profiles.profile_router)

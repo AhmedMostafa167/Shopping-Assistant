@@ -30,7 +30,7 @@ Behind the agent is a production-style backend: a layered, provider-agnostic Fas
 | Search speed | Whole 12,730-product catalogue embedded and indexed with HNSW | Median vector search **35 ms → 3.1 ms**, 99.7% of exact top-10 results kept |
 | Agent quality | Prompt v2 evaluated as a candidate in Langfuse before promotion | Tasks passed in all 3 runs: **7 → 12 of 12**, with **29% fewer** paid searches |
 | Guardrails | Input limits and a memory-write guard, tested with hostile tasks, every decision traced in Langfuse | **0 of 21** legitimate facts refused, system prompt leaked in **0** runs; reworded instructions still get past the pattern filter (1 of 4 blocked), so the next step is measured |
-| Engineering | Typed layers, provider factories, migrations, resumable jobs, CI | 101 automated tests, run on every push |
+| Engineering | Typed layers, provider factories, migrations, resumable jobs, CI | 104 automated tests, run on every push |
 
 An example turn, copied from an evaluation run (prompt v2):
 
@@ -59,6 +59,7 @@ Stored facts are read at the start of every later conversation, so the next sear
 - [Guardrails](#guardrails)
 - [Engineering practices](#engineering-practices)
 - [Integrating with an e-commerce platform](#integrating-with-an-e-commerce-platform)
+- [Demo storefront](#demo-storefront)
 - [Getting started](#getting-started)
 - [Configuration](#configuration)
 - [API reference](#api-reference)
@@ -318,7 +319,7 @@ What is deliberately not covered yet is listed in [Roadmap and future work](#roa
 - **Resumable long jobs.** Catalogue embedding works in saved batches of 96, so an interrupted run loses at most one batch and the next call continues. Evaluations resume from saved runs.
 - **Rate-limit handling.** The Cohere embedding client respects the 96-inputs-per-request and 2,000-inputs-per-minute limits, retries `429` responses and honours `Retry-After`.
 - **Structured logging.** Events are logged as key-value records with `structlog`.
-- **Tests and CI.** 101 tests run with fakes for every external service, so no API key or database is needed. They cover hybrid retrieval and rank fusion, reranking and embedding rate limits, embedding and indexing, the chat and feedback routes, prompt loading, publishing and promotion, tracing, the evaluation checks and metrics, and the guardrails. GitHub Actions runs a lint step for syntax errors, undefined names and unused variables, then the full test suite, on every push and pull request to `main`.
+- **Tests and CI.** 104 tests run with fakes for every external service, so no API key or database is needed. They cover hybrid retrieval and rank fusion, reranking and embedding rate limits, embedding and indexing, the chat and feedback routes, prompt loading, publishing and promotion, tracing, the evaluation checks and metrics, and the guardrails. GitHub Actions runs a lint step for syntax errors, undefined names and unused variables, then the full test suite, on every push and pull request to `main`.
 
 ```bash
 uv run --group dev pytest -q
@@ -329,13 +330,32 @@ uv run --group dev pytest -q
 The service is built to sit behind an online store as its product-discovery assistant:
 
 1. **Load the catalogue.** Upload the store's product export (CSV, Excel, JSON, Parquet or Arrow) per category through the data API, validate it, store it and embed it. Embedding is resumable, so large catalogues can be loaded in several calls.
-2. **Add the chat to the storefront.** A chat widget calls two endpoints: create a conversation, then send messages. Replies are built from the catalogue's titles, prices and descriptions; the tool results also carry each product's image URL.
+2. **Add the chat to the storefront.** A chat widget calls two endpoints: create a conversation, then send messages. Each reply comes with the products the agent found as structured cards (ID, title, price, recommendation score, image URL), taken straight from the catalogue rather than from the model's text, so the widget can render them reliably.
 3. **Remember customers.** Passing the store's customer ID as the username gives each shopper lasting memory of their preferences, budget and devices across visits.
 4. **Operate it.** Every conversation is traced, customers can rate replies, prompts change without a deploy, and request metrics feed Prometheus and Grafana.
 
 What a store gets: customers can ask in their own words ("a stand for my desk, black, cheap"), get answers limited to products the store actually sells at their real prices, and are not asked for their preferences again on every visit.
 
-Before running it for real customers, a platform integration would add: authentication between the store and this API, separation of catalogues and customers per store, rate limiting, structured product cards with product IDs and links in the response, and customer-facing controls to view and delete stored memory.
+Before running it for real customers, a platform integration would add: authentication between the store and this API, separation of catalogues and customers per store, rate limiting, product links and add-to-cart on the cards, catalogue sync through the platform's product API, and customer-facing controls to delete stored memory.
+
+## Demo storefront
+
+`demo/app.py` is a Gradio storefront for a fictional phone-accessories shop, built as a plain HTTP client of the API, the way a real store's website would integrate:
+
+- A chat with the assistant, with example questions to start from.
+- Product cards with the catalogue image, price and recommendation score for every product the agent found.
+- A customer switcher and a "What I remember about you" panel, to show preferences carrying over to a new conversation.
+- 👍/👎 on each reply, recorded in Langfuse as user feedback on that reply's trace.
+
+```bash
+# Terminal 1: the API
+uv run uvicorn main:app --app-dir src --port 8001
+
+# Terminal 2: the storefront, at http://localhost:7860
+uv run --group demo python demo/app.py
+```
+
+Set `SHOPPING_API_URL` if the API runs elsewhere.
 
 ## Getting started
 
@@ -430,7 +450,8 @@ All application routes are under `/api/v1`. Interactive documentation is served 
 | --- | --- | --- |
 | `GET` | `/api/v1/` | Application name and version. |
 | `POST` | `/api/v1/conversations` | Create a conversation for a username. |
-| `POST` | `/api/v1/chat` | Send a message; returns the reply and its `trace_id`. |
+| `POST` | `/api/v1/chat` | Send a message; returns the reply, its `trace_id` and the products found as cards. |
+| `GET` | `/api/v1/profiles/{username}/memories` | The customer's stored facts. |
 | `POST` | `/api/v1/chat/feedback` | Rate a reply. |
 | `POST` | `/api/v1/data/upload/{category}` | Upload a catalogue file. |
 | `POST` | `/api/v1/data/validate/{asset}` | Validate an uploaded file. |
@@ -457,7 +478,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
   }'
 ```
 
-The conversation must belong to the given username. Messages over 2,000 characters are rejected with `422`. The response includes a `trace_id` when tracing is enabled.
+The conversation must belong to the given username. Messages over 2,000 characters are rejected with `422`. The response includes a `trace_id` when tracing is enabled, and `products`: the products the agent's tools returned in this turn, each with `product_id`, `title`, `price` (`null` when not listed), `recommendation_score` and `image`.
 
 ### Feedback
 
@@ -521,6 +542,7 @@ The embed endpoint embeds every product in the category without an embedding, in
 ```text
 .
 ├── .github/workflows/CI.yml        Lint and test workflow
+├── demo/                           Gradio storefront demo, a client of the API
 ├── docker/                         Compose stack, Nginx, Prometheus and the application image
 ├── eval/                           Retrieval and agent evaluation, tasks, checks and the improvement log
 ├── scripts/                        Prompt seeding, publishing and promotion
@@ -568,7 +590,7 @@ Platform:
 
 - An evaluation gate in CI that blocks a merge on a behaviour regression.
 - Online LLM-judge evaluators on live traffic.
-- Structured product cards in chat responses, and endpoints to list, read and delete conversations and memories.
+- Endpoints to list and delete conversations and memories, and product links and add-to-cart on the cards.
 - A product comparison tool.
 - Background ingestion jobs with durable status for very large catalogues.
 

@@ -31,29 +31,44 @@ def format_price(product) -> str:
     return f"${price}"
 
 
+def product_card(product) -> dict:
+    """The product as the API returns it to clients, straight from the database."""
+    price = product.price
+    return {
+        "product_id": product.product_id,
+        "title": product.title,
+        "price": None if price is None or math.isnan(price) else price,
+        "recommendation_score": product.recommendation_score,
+        "image": product.image,
+    }
+
+
+# Tools return (text for the model, product cards for the client). The model sees only the
+# text, so product images and prices reach the user without passing through the model.
 def make_search_catalog_tool(retrieval_controller):
-    @tool("search_catalog", args_schema=SearchCatalogInput)
+    @tool("search_catalog", args_schema=SearchCatalogInput, response_format="content_and_artifact")
     async def search_catalog(query: str, category_name: str, top_k: int = 5) -> str:
         """Search the product catalog semantically and by keyword."""
         query = query.strip()
         if not query:
-            return "No valid product search query was provided."
+            return "No valid product search query was provided.", []
 
         products = await retrieval_controller.hybrid_search(query, top_k, category_name)
         logger.info("catalog_search_completed", query=query, result_count=len(products))
         if not products:
-            return "No matching products found."
-        return "\n".join(
+            return "No matching products found.", []
+        text = "\n".join(
             f"- {p.title} ({format_price(p)}, {format_recommendation_score(p)}) "
             f"[Image URL: {p.image}]: {p.description}"
             for p in products
         )
+        return text, [product_card(p) for p in products]
 
     return search_catalog
 
 
 def make_filter_products_tool(product_model):
-    @tool("filter_products", args_schema=FilterProductsInput)
+    @tool("filter_products", args_schema=FilterProductsInput, response_format="content_and_artifact")
     async def filter_products(
         category_name: str,
         min_price: float = None,
@@ -73,12 +88,13 @@ def make_filter_products_tool(product_model):
             result_count=len(products),
         )
         if not products:
-            return "No products matched those filters."
-        return "\n".join(
+            return "No products matched those filters.", []
+        text = "\n".join(
             f"- {p.title} ({format_price(p)}, {format_recommendation_score(p)}) "
             f"[Image URL: {p.image}]"
             for p in products
         )
+        return text, [product_card(p) for p in products]
 
     return filter_products
 

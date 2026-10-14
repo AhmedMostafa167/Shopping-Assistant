@@ -110,12 +110,13 @@ def test_a_fact_about_the_user_is_stored():
 
 
 class FakeRetrievalController:
-    def __init__(self):
+    def __init__(self, products=()):
         self.calls = []
+        self.products = list(products)
 
     async def hybrid_search(self, query, top_k, category_name):
         self.calls.append(top_k)
-        return []
+        return self.products
 
 
 def search_with(top_k):
@@ -157,3 +158,20 @@ def test_a_chat_message_over_the_limit_is_rejected():
     ChatRequest(**request, message="x" * MAX_MESSAGE_CHARACTERS)
     with pytest.raises(ValidationError):
         ChatRequest(**request, message="x" * (MAX_MESSAGE_CHARACTERS + 1))
+
+
+def test_search_results_reach_the_client_as_cards_the_model_never_sees():
+    product = SimpleNamespace(product_id=7, title="Black stand", price=float("nan"), image="https://img.example/7.jpg",
+                              description="Sturdy.", recommendation_score=4.2)
+    retrieval = FakeRetrievalController([product])
+    builder = StateGraph(AgentState)
+    builder.add_node("tools", ToolNode([make_search_catalog_tool(retrieval)]))
+    builder.add_edge(START, "tools")
+    builder.add_edge("tools", END)
+    call = {"name": "search_catalog", "id": "call-1", "args": {"query": "stand", "category_name": "electronics_cellphones"}}
+    result = asyncio.run(builder.compile().ainvoke({"messages": [AIMessage(content="", tool_calls=[call])]}))
+    message = result["messages"][-1]
+
+    assert "Black stand (price not listed" in message.content
+    assert message.artifact == [{"product_id": 7, "title": "Black stand", "price": None,
+                                 "recommendation_score": 4.2, "image": "https://img.example/7.jpg"}]
