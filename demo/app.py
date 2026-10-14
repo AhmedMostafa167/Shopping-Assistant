@@ -15,6 +15,8 @@ API_URL = os.getenv("SHOPPING_API_URL", "http://localhost:8001/api/v1")
 STORE_NAME = "Volt Mobile"
 # Demo shoppers; each one's preferences are remembered across conversations.
 CUSTOMERS = {"Sara": "sara-demo", "Omar": "omar-demo"}
+# The API's limit; longer messages are rejected with 422.
+MAX_MESSAGE_CHARACTERS = 2000
 EXAMPLES = [
     "I always prefer black accessories. Find me a phone stand.",
     "I need a phone case under $15.",
@@ -91,6 +93,13 @@ def memory_html(username: str) -> str:
     return f'<div class="facts">{items}</div>'
 
 
+def message_text(content) -> str:
+    """Gradio returns a message's content as a list of parts; keep the text."""
+    if isinstance(content, str):
+        return content
+    return " ".join(part.get("text", "") for part in content if isinstance(part, dict)).strip()
+
+
 def fresh_session() -> dict:
     return {"conversation_id": None, "trace_ids": {}}
 
@@ -112,13 +121,14 @@ def answer(history: list, customer: str, session: dict):
             created = client.post("/conversations", json={"username": username, "title": "Storefront chat"})
             created.raise_for_status()
             session["conversation_id"] = created.json()["conversation_id"]
+        text = message_text(history[-1]["content"])
         response = client.post("/chat", json={
             "username": username,
             "conversation_id": session["conversation_id"],
-            "message": history[-1]["content"],
+            "message": text,
         })
-        if response.status_code == 422:
-            reply = "That message is too long. Please keep it under 2,000 characters."
+        if response.status_code == 422 and len(text) > MAX_MESSAGE_CHARACTERS:
+            reply = f"That message is too long. Please keep it under {MAX_MESSAGE_CHARACTERS:,} characters."
         else:
             response.raise_for_status()
             data = response.json()
