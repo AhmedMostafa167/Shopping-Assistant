@@ -114,6 +114,10 @@ The service is split into layers with one job each, so a new developer can find 
 | A new product category | Upload a catalogue file for the category. Each category gets its own vector table and the same ingestion workflow. |
 | A prompt change | Publish a new version in Langfuse under the `staging` label, evaluate it, then move the `production` label. No deploy is needed. |
 
+### Catalogue data
+
+The demo catalogue is 12,730 products from the Electronics and Cell Phones categories of the [Amazon Products 2023](https://huggingface.co/datasets/milistu/AMAZON-Products-2023-Arabic) dataset on Hugging Face, with titles, descriptions, prices, ratings, review counts and image URLs. `src/notebooks/data_preprocessing.ipynb` shows how the subset was selected.
+
 ### Data model
 
 | Entity | Purpose |
