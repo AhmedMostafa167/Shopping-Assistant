@@ -15,7 +15,7 @@ Entries are in the order the work happened.
 | 5 | 2026-10-11 | Agent behaviour baseline | Tasks passed in all 3 runs | not measured | 9 of 12 |
 | 6 | 2026-10-12 | Prompt version 2 | Tasks passed in all 3 runs | 7 of 12 | 12 of 12 |
 | 7 | 2026-10-14 | Guardrails | Legitimate facts refused; instructions blocked when the model tried to store them | no guard | 0 of 21; 1 of 4 |
-| 8 | 2026-10-14 | Price limits inside search (prompt v3) | Returned products of the requested kind | 29 of 37 (78%) | 27 of 27 (100%) |
+| 8 | 2026-10-14 | Price limits inside search (prompt v3) | Returned products of the requested kind | 57 of 81 (70%) | 48 of 48 (100%) |
 
 ## How the retrieval numbers are produced
 
@@ -442,16 +442,18 @@ the version 2 runs.
 update facts do not search and were not re-run. The limits check accepts limits on either
 tool, so version 2's runs are scored the same way.
 
-**Result.** The run stopped at 12 of 21 runs on Groq's free daily token limit (200,000), after
-the guardrail evaluation the same day. The comparison uses the same 12 task-and-run pairs
-for both versions.
+**Result.** 7 tasks, 3 runs each, both versions. The run was interrupted twice (a database
+restart, then Groq's free daily token limit) and resumed from its saved runs; all 21 runs
+completed.
 
-| Measure, same 12 runs | Prompt v2 | Prompt v3 |
+| Measure, 7 product-request tasks × 3 runs | Prompt v2 | Prompt v3 |
 |---|---|---|
-| Runs passing every check | 12 of 12 | 12 of 12 |
-| Returned products of the requested kind (5 tasks with a product type) | 29 of 37 (78%) | 27 of 27 (100%) |
-| Catalogue calls | 14 | 13 |
-| `filter_products` calls | 3 | 0 |
+| Tasks passed in all 3 runs | 7 of 7 | 7 of 7 |
+| Runs passing every check | 21 of 21 | 21 of 21 |
+| Returned products of the requested kind (5 tasks with a product type) | 57 of 81 (70%) | 48 of 48 (100%) |
+| Catalogue calls (each a paid rerank) | 26 | 22 (-15%) |
+| `filter_products` calls | 6 | 0 |
+| Tool calls per conversation | 2.38 | 2.19 |
 
 The budget task shows the difference. Version 2 searched for "phone case under 15", filtered
 for anything under $15 (ten products, mostly not cases) and searched again: three calls.
@@ -460,21 +462,28 @@ got back was a case under $15.
 
 **Findings.**
 
-1. **Search results are now all relevant** in the runs measured, against 78% before; the
-   irrelevant 22% came from the query-less filter.
-2. **Nothing regressed.** Every check passed in all 12 runs, as with version 2.
+1. **Search results are now all relevant** in the runs measured, against 70% before; the
+   irrelevant 30% came from the query-less filter.
+2. **Nothing regressed.** Every check passed in all 21 runs, as with version 2.
 3. **The agent also writes cleaner queries:** with a place for the price limit, it no longer
    puts "under 15" into the search text.
 
-**How much to read into it.** 12 runs instead of 21, and the "requested kind" measure is a
-title keyword match written for this comparison, not one of the graded checks. The
+**How much to read into it.** The graded checks were already at 100% for these tasks, so
+they can only show that nothing broke. The "requested kind" measure is a title keyword match
+written for this comparison, not one of the graded checks. The
 relevance difference comes from a mechanism that can be read in the code (a query-less
 filter cannot return only phone cases), which the numbers confirm rather than establish.
 
-**Cost.** 13 searches, about $0.03 in reranking; generation on the Groq free tier.
+**Cost.** 22 searches, about $0.05 in reranking; generation on the Groq free tier.
 
-**Decision.** Version 3 promoted to production on 2026-10-14. The remaining 9 runs can be
-completed when the token allowance refills (`--label prompt-v3` resumes them).
+**Decision.** Version 3 promoted to production on 2026-10-14, after the first 12 runs showed
+no regression; the remaining 9 runs, completed once the token allowance refilled, confirmed
+it.
+
+**Process finding.** Starting the whole Docker Compose stack recreated the database
+container in the middle of the evaluation and cut its connections. The runner stopped after
+two failures as designed and lost nothing. While an evaluation runs, start single services
+with `docker compose up -d --no-deps <service>`.
 
 ## Open questions
 
