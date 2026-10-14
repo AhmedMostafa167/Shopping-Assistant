@@ -29,6 +29,7 @@ Behind the agent is a production-style backend: a layered, provider-agnostic Fas
 | Retrieval | Keyword and vector search fused with Reciprocal Rank Fusion, then reranked | Right product ranked first: 23% → **43%** with reranking; in the top 10: **72%** hybrid vs 56% keyword and 41% vector alone |
 | Search speed | Whole 12,730-product catalogue embedded and indexed with HNSW | Median vector search **35 ms → 3.1 ms**, 99.7% of exact top-10 results kept |
 | Agent quality | Prompt v2 evaluated as a candidate in Langfuse before promotion | Tasks passed in all 3 runs: **7 → 12 of 12**, with **29% fewer** paid searches |
+| Search relevance | Price and rating limits moved inside hybrid search (prompt v3), found through the demo | Returned products of the kind asked for: **78% → 100%**, no check regressed |
 | Guardrails | Input limits and a memory-write guard, tested with hostile tasks, every decision traced in Langfuse | **0 of 21** legitimate facts refused, system prompt leaked in **0** runs; reworded instructions still get past the pattern filter (1 of 4 blocked), so the next step is measured |
 | Monitoring | Prometheus metrics from the API, PostgreSQL and the host, with a provisioned Grafana dashboard | Traffic, chat latency p50/p95, error rate, database and host health on one screen at startup |
 | Engineering | Typed layers, provider factories, migrations, resumable jobs, CI | 104 automated tests, run on every push |
@@ -280,7 +281,7 @@ Prompt v2 against v1, 12 tasks × 3 runs:
 | Stored fact used in search | 3 of 3 | 3 of 3 |
 | **Tasks passed in all 3 runs** | **7 of 12** | **12 of 12** |
 
-Version 1 stored one-off requests as lasting preferences and searched when nobody asked. Version 2 fixed both and made 29% fewer paid searches. Three hostile tasks were added later for the guardrails.
+Version 1 stored one-off requests as lasting preferences and searched when nobody asked. Version 2 fixed both and made 29% fewer paid searches. Version 3, now in production, passes price and rating limits into the search itself: on the same runs, every returned product was the kind asked for (27 of 27, against 29 of 37), with no check regressing. Three hostile tasks were added for the guardrails.
 
 The [improvement log](eval/IMPROVEMENT_LOG.md) records every measured change: the method, the numbers, what they showed, how much to read into them, and the decision taken.
 

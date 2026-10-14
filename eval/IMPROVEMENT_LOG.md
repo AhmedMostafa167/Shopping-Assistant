@@ -15,6 +15,7 @@ Entries are in the order the work happened.
 | 5 | 2026-10-11 | Agent behaviour baseline | Tasks passed in all 3 runs | not measured | 9 of 12 |
 | 6 | 2026-10-12 | Prompt version 2 | Tasks passed in all 3 runs | 7 of 12 | 12 of 12 |
 | 7 | 2026-10-14 | Guardrails | Legitimate facts refused; instructions blocked when the model tried to store them | no guard | 0 of 21; 1 of 4 |
+| 8 | 2026-10-14 | Price limits inside search (prompt v3) | Returned products of the requested kind | 29 of 37 (78%) | 27 of 27 (100%) |
 
 ## How the retrieval numbers are produced
 
@@ -420,6 +421,60 @@ every decision is visible in Langfuse. Do not present memory poisoning as solved
 step is a stronger detector, either broader patterns evaluated on rewordings they were not
 tuned on, or a classifier such as Llama Prompt Guard, measured with these same tasks. The
 run-time price check moves up the list because of finding 6.
+
+## Entry 8 — Price and rating limits inside search; filter tool removed (2026-10-14)
+
+**How it was found.** In the demo storefront, "a phone case under $15" produced about 15
+product cards, many of them not phone cases. The cards were fixed to show only what the
+reply presents, but the cause was the `filter_products` tool: it took price and rating limits
+and no search query, so it returned the first ten products under the price, whatever they
+were. The prompt sent every request with a price limit to it.
+
+**Change.** `search_catalog` takes optional `min_price`, `max_price` and `min_rating`, applied
+as SQL conditions inside both keyword and vector search, before ranking. pgvector's iterative
+index scan keeps a filtered vector search returning a full set of results; checked on the
+catalogue, a $15 limit (with and without a 4.5 rating floor) returned 10 of 10 results within
+the limits for both searches. `filter_products` was removed, and prompt version 3 tells the
+agent to pass limits to `search_catalog`. It was evaluated under the `staging` label against
+the version 2 runs.
+
+**Method.** The 7 tasks that make product requests, 3 runs each. Tasks that only store or
+update facts do not search and were not re-run. The limits check accepts limits on either
+tool, so version 2's runs are scored the same way.
+
+**Result.** The run stopped at 12 of 21 runs on Groq's free daily token limit (200,000), after
+the guardrail evaluation the same day. The comparison uses the same 12 task-and-run pairs
+for both versions.
+
+| Measure, same 12 runs | Prompt v2 | Prompt v3 |
+|---|---|---|
+| Runs passing every check | 12 of 12 | 12 of 12 |
+| Returned products of the requested kind (5 tasks with a product type) | 29 of 37 (78%) | 27 of 27 (100%) |
+| Catalogue calls | 14 | 13 |
+| `filter_products` calls | 3 | 0 |
+
+The budget task shows the difference. Version 2 searched for "phone case under 15", filtered
+for anything under $15 (ten products, mostly not cases) and searched again: three calls.
+Version 3 made one call, `search_catalog("phone case", max_price=15)`, and every product it
+got back was a case under $15.
+
+**Findings.**
+
+1. **Search results are now all relevant** in the runs measured, against 78% before; the
+   irrelevant 22% came from the query-less filter.
+2. **Nothing regressed.** Every check passed in all 12 runs, as with version 2.
+3. **The agent also writes cleaner queries:** with a place for the price limit, it no longer
+   puts "under 15" into the search text.
+
+**How much to read into it.** 12 runs instead of 21, and the "requested kind" measure is a
+title keyword match written for this comparison, not one of the graded checks. The
+relevance difference comes from a mechanism that can be read in the code (a query-less
+filter cannot return only phone cases), which the numbers confirm rather than establish.
+
+**Cost.** 13 searches, about $0.03 in reranking; generation on the Groq free tier.
+
+**Decision.** Version 3 promoted to production on 2026-10-14. The remaining 9 runs can be
+completed when the token allowance refills (`--label prompt-v3` resumes them).
 
 ## Open questions
 
