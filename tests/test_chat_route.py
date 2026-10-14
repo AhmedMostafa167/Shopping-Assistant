@@ -95,25 +95,45 @@ def test_chat_still_returns_500_when_the_agent_fails():
     assert raised.value.status_code == 500
 
 
-def card(product_id):
-    return {"product_id": product_id, "title": f"Product {product_id}", "price": 9.99,
+def card(product_id, title, price=9.99):
+    return {"product_id": product_id, "title": title, "price": price,
             "recommendation_score": 4.0, "image": f"https://img.example/{product_id}.jpg"}
 
 
-def tool_result(*product_ids):
-    return ToolMessage(content="- products", tool_call_id="call", artifact=[card(i) for i in product_ids])
+def tool_result(*cards):
+    return ToolMessage(content="- products", tool_call_id="call", artifact=list(cards))
 
 
-def test_only_this_turns_products_are_returned_once_each_in_order():
-    messages = [
-        HumanMessage("a stand"), tool_result(1, 2), AIMessage("Here are stands."),
-        HumanMessage("cheaper ones"), tool_result(3, 4), tool_result(4, 5), AIMessage("Here you go."),
-    ]
-    assert [c["product_id"] for c in products_from_turn(messages)] == [3, 4, 5]
+STAND = card(1, "Heainaiyoo Foldable Cell Phone Stand,Angle Height Adjustable Cell Phone Holder", 5.99)
+KICKSTAND = card(2, "Wansurs [2 Pack] Mini Phone Kickstand BlackCell Phone Stick Stand", 4.99)
+WATCH_BAND = card(3, "GEAK 4 Pack Compatible with Apple Watch Band 40mm 38mm", 7.99)
+GENERIC_CASE = card(4, "iPhone 14 Pro Max Case Black", 8.99)
+REPLY = ("| 1 | **Wansurs 2 Pack Mini Phone Kickstand** | $4.99 |\n"
+         "| 2 | **Heainaiyoo Foldable Cell Phone Stand** | $5.99 |\n"
+         "Both work with your iPhone and an Apple Watch band.")
+
+
+def test_only_the_products_the_reply_presents_become_cards_in_its_order():
+    messages = [HumanMessage("a stand"), tool_result(STAND, KICKSTAND, WATCH_BAND, GENERIC_CASE),
+                AIMessage(REPLY)]
+    assert [c["product_id"] for c in products_from_turn(messages)] == [2, 1]
+
+
+def test_earlier_turns_and_repeats_do_not_add_cards():
+    messages = [HumanMessage("a case"), tool_result(GENERIC_CASE), AIMessage("iPhone 14 case for $8.99"),
+                HumanMessage("a stand"), tool_result(KICKSTAND), tool_result(KICKSTAND), AIMessage(REPLY)]
+    assert [c["product_id"] for c in products_from_turn(messages)] == [2]
+
+
+def test_a_generic_title_needs_its_price_in_the_reply():
+    messages = [HumanMessage("a case"), tool_result(GENERIC_CASE), AIMessage("This iPhone 14 Pro Max case is $8.99.")]
+    assert [c["product_id"] for c in products_from_turn(messages)] == [4]
+    messages[-1] = AIMessage("Any iPhone 14 Pro Max case will do.")
+    assert products_from_turn(messages) == []
 
 
 def test_a_turn_without_a_search_returns_no_products():
-    messages = [HumanMessage("a stand"), tool_result(1), AIMessage("Here."), HumanMessage("thanks"),
+    messages = [HumanMessage("a stand"), tool_result(KICKSTAND), AIMessage(REPLY), HumanMessage("thanks"),
                 ToolMessage(content="No stored facts.", tool_call_id="m"), AIMessage("You're welcome.")]
     assert products_from_turn(messages) == []
 

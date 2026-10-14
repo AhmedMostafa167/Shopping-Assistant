@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from langfuse import get_client, propagate_attributes
 from langfuse.langchain import CallbackHandler
@@ -43,22 +45,64 @@ async def get_conversation_for_user(request: Request, username: str, conversatio
     return profile, conversation
 
 
+# Words too common in product titles to tell one product from another.
+GENERIC_TITLE_WORDS = {
+    "for", "with", "and", "the", "phone", "case", "cell", "compatible", "pack", "black", "new",
+    "iphone", "samsung", "galaxy", "cover", "holder", "stand", "charger", "cable", "inch", "pro",
+    "max",
+}
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _position_in_reply(reply: str, card: dict) -> int | None:
+    """Where the reply presents this product, or None if it does not.
+
+    The model shortens titles ("Heainaiyoo Foldable Cell Phone Stand"), so a product counts
+    as presented when its first title word (usually the brand) appears and either its price
+    or half of its distinctive title words do. Checked against the saved evaluation
+    conversations, this picks exactly the products each reply presents.
+    """
+    reply_words = _words(reply)
+    title = [word for word in _words(card["title"]) if len(word) > 1]
+    if not title or title[0] not in reply_words:
+        return None
+    price_shown = card.get("price") is not None and f"{card['price']:.2f}" in reply
+    distinctive = [w for w in title if len(w) > 2 and w not in GENERIC_TITLE_WORDS][:5]
+    if len(distinctive) < 2:
+        presented = price_shown
+    else:
+        overlap = sum(word in reply_words for word in distinctive) / len(distinctive)
+        presented = price_shown or overlap >= 0.5
+    return reply_words.index(title[0]) if presented else None
+
+
 def products_from_turn(messages) -> list[dict]:
-    """Product cards from the tool results after the latest user message, without repeats."""
+    """The products this turn's reply presents, in the reply's order.
+
+    Tools often return more than the reply shows (a price filter returns any ten products
+    under the price), so only products the reply mentions become cards.
+    """
     turn = []
     for message in reversed(messages):
         if getattr(message, "type", None) == "human":
             break
         turn.append(message)
-    cards, seen = [], set()
+    reply = messages[-1].content if messages and isinstance(messages[-1].content, str) else ""
+    found, seen = [], set()
     for message in reversed(turn):
         if getattr(message, "type", None) != "tool":
             continue
         for card in getattr(message, "artifact", None) or []:
-            if card["product_id"] not in seen:
-                seen.add(card["product_id"])
-                cards.append(card)
-    return cards
+            if card["product_id"] in seen:
+                continue
+            seen.add(card["product_id"])
+            position = _position_in_reply(reply, card)
+            if position is not None:
+                found.append((position, card))
+    return [card for _, card in sorted(found, key=lambda item: item[0])]
 
 
 @chat_router.post("", response_model=ChatResponse)
