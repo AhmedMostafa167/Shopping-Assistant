@@ -13,6 +13,12 @@ A conversational shopping assistant for e-commerce catalogues. A customer descri
 
 Behind the agent is a production-style backend: a layered, provider-agnostic FastAPI service on PostgreSQL and pgvector, with full LLM tracing, prompt management without redeploys, user feedback, service monitoring with Prometheus and Grafana, code-graded evaluation of retrieval and agent behaviour, and run-time guardrails. Every improvement was measured before and after, and recorded in the [improvement log](eval/IMPROVEMENT_LOG.md).
 
+## Demo
+
+![A customer states a lasting preference, gets matching products, and a new conversation already remembers it](docs/media/shopping-assistant-demo.gif)
+
+The demo storefront: a customer's preference for black accessories is stored and used again in a new conversation. The [full demo video](docs/media/shopping-assistant-demo.mp4) (1:25) also shows a second customer who only buys Samsung, an updated fact when they switch phones, and a request for a brand the store does not carry. Waits for replies are shortened in the video.
+
 ## Highlights
 
 | Area | What was done | Measured result |
@@ -103,7 +109,7 @@ uv run --group dev pytest -q
 ├── .github/workflows/CI.yml        Lint and test workflow
 ├── demo/                           Gradio storefront demo, a client of the API
 ├── docker/                         Compose stack, Nginx, Prometheus and the application image
-├── docs/                           Architecture, evaluation, observability, running and roadmap
+├── docs/                           Architecture, evaluation, observability, running, roadmap and demo media
 ├── eval/                           Retrieval and agent evaluation, tasks, checks and the improvement log
 ├── scripts/                        Prompt seeding, publishing and promotion
 ├── src/
