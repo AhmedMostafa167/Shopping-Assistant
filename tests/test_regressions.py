@@ -12,7 +12,7 @@ from utils.rrf import reciprocal_rank_fusion
 
 
 class FakeEmbeddingClient:
-    def embed_texts(self, *, texts, document_type, batch_size):
+    async def aembed_texts(self, *, texts, document_type, batch_size):
         assert texts == ["wireless noise cancelling headphones"]
         return [[0.1, 0.2, 0.3]]
 
@@ -27,9 +27,10 @@ class FakeVectorDB:
 
 
 class FakeProductModel:
-    async def keyword_search(self, query, top_k, limits=None):
+    async def keyword_search(self, query, top_k, limits=None, category_name=None):
         assert query == "wireless noise cancelling headphones"
         assert top_k == 5
+        assert category_name == "electronics"
         return [SimpleNamespace(product_id=101, score=1.0)]
 
     async def get_products_by_ids(self, product_ids):

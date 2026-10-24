@@ -29,13 +29,17 @@ class RetrievalController(BaseController):
         controller.product_model = await ProductModel.create_instance(db_client=db_client)
         return controller
 
-    async def keyword_search(self, query: str, top_k: int = 10, limits: dict | None = None):
+    async def keyword_search(self, query: str, top_k: int = 10,
+                             category_name: str = DataBaseEnums.DEFAULT_CATEGORY_NAME.value,
+                             limits: dict | None = None):
         with get_client().start_as_current_observation(
             as_type="retriever",
             name="keyword-search",
-            input={"query": query, "top_k": top_k, "limits": limits},
+            input={"query": query, "top_k": top_k, "category_name": category_name, "limits": limits},
         ) as observation:
-            products = await self.product_model.keyword_search(query, top_k, limits)
+            products = await self.product_model.keyword_search(
+                query, top_k, limits, category_name=category_name
+            )
             products = sorted(products, key=lambda x: x.score, reverse=True)
             observation.update(output=scored_ids(products))
 
@@ -57,7 +61,7 @@ class RetrievalController(BaseController):
                 input=query,
                 model=getattr(self.embedding_client, "embedding_model_id", None),
             ) as embedding:
-                query_embedding = self.embedding_client.embed_texts(
+                query_embedding = await self.embedding_client.aembed_texts(
                     texts=[query], document_type=DocumentTypeEnum.QUERY.value, batch_size=1
                 )
                 # The vector itself is noise in a trace; its size is enough.
@@ -129,7 +133,7 @@ class RetrievalController(BaseController):
                    "limits": limits},
         ) as observation:
             vector_results = await self.vector_search(query, top_k, category_name, limits)
-            keyword_results = await self.keyword_search(query, top_k, limits)
+            keyword_results = await self.keyword_search(query, top_k, category_name, limits)
 
             fused = self.reranking(vector_results, keyword_results)
             fused_ids = [pid for pid, _ in fused][:top_k]

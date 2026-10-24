@@ -71,7 +71,7 @@ async def retrieve(mode: str, query: str, top_k: int, category_name: str) -> lis
     if mode == "vector":
         results = await controller.vector_search(query, top_k, category_name)
     elif mode == "keyword":
-        results = await controller.keyword_search(query, top_k)
+        results = await controller.keyword_search(query, top_k, category_name)
     else:
         results = await controller.hybrid_search(
             query, top_k, category_name, rerank=(mode == "hybrid_rerank")
