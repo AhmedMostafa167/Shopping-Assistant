@@ -29,7 +29,7 @@ The demo storefront: a customer's preference for black accessories is stored and
 | Search relevance | Price and rating limits moved inside hybrid search (prompt v3), found through the demo | Returned products of the kind asked for: **70% → 100%**, 15% fewer paid searches, no check regressed |
 | Guardrails | Input limits and a memory-write guard, tested with hostile tasks, every decision traced in Langfuse | **0 of 21** legitimate facts refused, system prompt leaked in **0** runs; reworded instructions still get past the pattern filter (1 of 4 blocked), so the next step is measured |
 | Monitoring | Prometheus metrics from the API, PostgreSQL and the host, with a provisioned Grafana dashboard | Traffic, chat latency p50/p95, error rate, database and host health on one screen at startup |
-| Engineering | Typed layers, provider factories, migrations, resumable jobs, CI | 104 automated tests, run on every push |
+| Engineering | Typed layers, provider factories, migrations, resumable jobs, CI | 107 automated tests, run on every push |
 
 An example turn, copied from an evaluation run (prompt v2):
 
@@ -92,10 +92,13 @@ Requirements: Python 3.12+ and [uv](https://docs.astral.sh/uv/) or Docker, a Coh
 # Full stack: API, PostgreSQL with pgvector, Nginx, Prometheus and Grafana
 mkdir -p docker/env
 cp .env.example docker/env/.env.app    # set POSTGRES_HOST=pgvector and the API keys
+cp docker/env/.env.example.postgres docker/env/.env.postgres
+cp docker/env/.env.example.postgres-exporter docker/env/.env.postgres-exporter
+cp docker/env/.env.example.grafana docker/env/.env.grafana
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-The API is then at <http://localhost:8000/api/v1/> with interactive documentation at `/docs`, and Grafana at <http://localhost:3000>. Compose needs the other environment files under `docker/env/`; templates are there. To run without Docker, load a catalogue, or start the Gradio storefront demo, see [Running, configuring and integrating](docs/running.md).
+The API is then at <http://localhost:8000/api/v1/> with interactive documentation at `/docs`, and Grafana at <http://localhost:3000>. To run without Docker, load a catalogue, or start the Gradio storefront demo, see [Running, configuring and integrating](docs/running.md).
 
 ```bash
 # Tests: no API key or database needed

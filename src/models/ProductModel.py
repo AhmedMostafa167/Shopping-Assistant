@@ -104,16 +104,21 @@ class ProductModel(BaseDataModel):
             conditions.append(Product.average_rating >= limits["min_rating"])
         return conditions
 
-    async def keyword_search(self, query: str, top_k: int = 10, limits: dict | None = None):
+    async def keyword_search(self, query: str, top_k: int = 10, limits: dict | None = None,
+                             category_name: str | None = None):
         async with self.db_client() as session:
             ts_query = func.plainto_tsquery("english", query)
+
+            conditions = self.limit_conditions(limits)
+            if category_name is not None:
+                conditions.append(Product.category_name == category_name)
 
             stmt = (
                 select(
                     Product.product_id,
                     func.ts_rank(Product.search_vector, ts_query).label("score")
                 )
-                .where(Product.search_vector.op("@@")(ts_query), *self.limit_conditions(limits))
+                .where(Product.search_vector.op("@@")(ts_query), *conditions)
                 .order_by(desc("score"))
                 .limit(top_k)
             )
